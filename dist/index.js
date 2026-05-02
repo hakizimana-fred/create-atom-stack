@@ -7,7 +7,7 @@ import ora from "ora";
 // src/create.ts
 import path from "path";
 import fs from "fs";
-import { execSync } from "child_process";
+import { execSync, spawn } from "child_process";
 import chalk from "chalk";
 
 // src/templates/package-json.ts
@@ -2873,6 +2873,58 @@ function getFileMap(projectName) {
 }
 
 // src/create.ts
+var INSTALL_PHASES = [
+  "Resolving dependency tree",
+  "Fetching packages from registry",
+  "Verifying package integrity",
+  "Linking dependencies",
+  "Building package graph",
+  "Running lifecycle scripts"
+];
+function npmInstall(cwd, spinner2) {
+  return new Promise((resolve, reject) => {
+    const startTime = Date.now();
+    let phaseIdx = 0;
+    const elapsed = () => chalk.dim(` \xB7 ${Math.round((Date.now() - startTime) / 1e3)}s`);
+    spinner2.text = INSTALL_PHASES[0] + elapsed();
+    const phaseTick = setInterval(() => {
+      phaseIdx = (phaseIdx + 1) % INSTALL_PHASES.length;
+      spinner2.text = INSTALL_PHASES[phaseIdx] + elapsed();
+    }, 3e3);
+    const child = spawn("npm", ["install"], {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let lastPkgUpdate = 0;
+    const onChunk = (chunk) => {
+      const text = chunk.toString();
+      const now = Date.now();
+      const summary = text.match(/added (\d+) packages/i);
+      if (summary) {
+        clearInterval(phaseTick);
+        spinner2.text = chalk.white(`Added ${summary[1]} packages`) + elapsed();
+        return;
+      }
+      if (now - lastPkgUpdate < 400) return;
+      const pkg = text.match(/reify:(@?[a-z][a-z0-9._-]*(?:\/[a-z0-9._-]+)?)/i);
+      if (pkg) {
+        lastPkgUpdate = now;
+        spinner2.text = chalk.dim("\u21B3 ") + chalk.white(pkg[1]) + elapsed();
+      }
+    };
+    child.stdout?.on("data", onChunk);
+    child.stderr?.on("data", onChunk);
+    child.on("close", (code) => {
+      clearInterval(phaseTick);
+      if (code === 0) resolve();
+      else reject(new Error(`npm install exited with code ${code}`));
+    });
+    child.on("error", (err) => {
+      clearInterval(phaseTick);
+      reject(err);
+    });
+  });
+}
 async function createProject(projectName, { skipInstall: skipInstall2, spinner: spinner2 }) {
   const projectDir = path.resolve(process.cwd(), projectName);
   if (fs.existsSync(projectDir)) {
@@ -2896,22 +2948,15 @@ async function createProject(projectName, { skipInstall: skipInstall2, spinner: 
   }
   for (const hook of [".husky/pre-commit", ".husky/commit-msg", ".husky/pre-push"]) {
     const hookPath = path.join(projectDir, hook);
-    if (fs.existsSync(hookPath)) {
-      fs.chmodSync(hookPath, 493);
-    }
+    if (fs.existsSync(hookPath)) fs.chmodSync(hookPath, 493);
   }
   spinner2.succeed(chalk.green(`${written} files written`));
   if (!skipInstall2) {
-    spinner2.start("Installing npm packages...");
-    const installHint = setTimeout(() => {
-      spinner2.text = "Still installing... (first install resolves the full dep tree)";
-    }, 15e3);
+    spinner2.start(INSTALL_PHASES[0]);
     try {
-      execSync("npm install", { cwd: projectDir, stdio: "pipe" });
-      clearTimeout(installHint);
+      await npmInstall(projectDir, spinner2);
       spinner2.succeed(chalk.green("Dependencies installed"));
     } catch {
-      clearTimeout(installHint);
       spinner2.warn(chalk.yellow("npm install failed \u2014 run it manually inside the project"));
     }
     spinner2.start("Initializing git repository...");
