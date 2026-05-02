@@ -196,8 +196,7 @@ export const navigationConstants = `export interface NavLink {
 }
 
 export const NAV_LINKS: NavLink[] = [
-  { label: 'Docs',   href: '#docs'  },
-  { label: 'About',  href: '#about' },
-  { label: 'GitHub', href: 'https://github.com', external: true },
+  { label: 'Docs',   href: '/docs' },
+  { label: 'GitHub', href: 'https://github.com/hakizimana-fred/create-atom-stack', external: true },
 ];
 `;

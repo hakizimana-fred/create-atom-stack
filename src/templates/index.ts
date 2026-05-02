@@ -25,7 +25,7 @@ import {
   vsCodeExtensions,
 } from './tooling.js';
 import { tailwindConfig, globalsCss } from './tailwind-and-styles.js';
-import { rootLayout, rootPage } from './app-files.js';
+import { rootLayout, rootPage, docsPage } from './app-files.js';
 import { buttonAtom, badgeAtom, cardAtom, inputAtom, loadingAtom, typographyAtom } from './atoms.js';
 import { codeBlockMolecule, featureCardMolecule, paginationMolecule } from './molecules.js';
 import { headerOrganism, footerOrganism } from './organisms.js';
@@ -84,9 +84,10 @@ export function getFileMap(projectName: string): FileMap {
     '.vscode/extensions.json': vsCodeExtensions,
 
     /* ── App ───────────────────────────────────────────────────────────── */
-    'src/app/globals.css':  globalsCss,
-    'src/app/layout.tsx':   rootLayout(projectName),
-    'src/app/page.tsx':     rootPage,
+    'src/app/globals.css':       globalsCss,
+    'src/app/layout.tsx':        rootLayout(projectName),
+    'src/app/page.tsx':          rootPage,
+    'src/app/docs/page.tsx':     docsPage,
 
     /* ── Atoms ─────────────────────────────────────────────────────────── */
     'src/components/atoms/button/index.tsx':     buttonAtom,

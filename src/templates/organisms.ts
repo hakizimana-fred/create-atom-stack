@@ -1,7 +1,7 @@
 export const headerOrganism = `'use client';
 
 import Link from 'next/link';
-import { Moon, Sun } from 'lucide-react';
+import { Moon, Sun, Github } from 'lucide-react';
 import { Button } from '@/components/atoms/button';
 import { useUiStore } from '@/store/ui.store';
 import { useScrollState } from '@/hooks/use-scroll-state';
@@ -23,7 +23,7 @@ export function Header() {
       )}
     >
       {/* Logo */}
-      <Link href="/" className="flex items-center gap-2 group">
+      <Link href="/" className="group flex items-center gap-2">
         <div className="flex size-7 items-center justify-center rounded-lg border border-brand/20 bg-brand-subtle transition-colors duration-base group-hover:bg-brand-muted">
           <span className="text-xs font-bold text-brand">A</span>
         </div>
@@ -33,24 +33,40 @@ export function Header() {
       </Link>
 
       {/* Navigation */}
-      <nav className="flex items-center gap-1">
-        {NAV_LINKS.map((link) => (
-          <a
-            key={link.href}
-            href={link.href}
-            target={link.external ? '_blank' : undefined}
-            rel={link.external ? 'noopener noreferrer' : undefined}
-            className="hidden px-3 py-1.5 text-sm text-txt-secondary transition-colors duration-base hover:text-txt-primary sm:block"
-          >
-            {link.label}
-          </a>
-        ))}
+      <nav className="flex items-center gap-0.5">
+        {NAV_LINKS.map((link) =>
+          link.label === 'GitHub' ? (
+            <a
+              key={link.href}
+              href={link.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="View source on GitHub"
+              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-txt-secondary transition-colors duration-base hover:bg-glass hover:text-txt-primary"
+            >
+              <Github className="size-4 shrink-0" />
+              <span className="hidden sm:block">GitHub</span>
+            </a>
+          ) : (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="group relative hidden px-3 py-1.5 text-sm text-txt-secondary transition-colors duration-base hover:text-txt-primary sm:block"
+            >
+              {link.label}
+              {/* Slide-in underline */}
+              <span className="absolute bottom-0.5 left-3 right-3 h-px origin-left scale-x-0 bg-brand/50 transition-transform duration-base group-hover:scale-x-100" />
+            </Link>
+          ),
+        )}
 
+        {/* Theme toggle */}
         <Button
           variant="ghost"
           size="sm"
           onClick={toggleTheme}
           aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          className="ml-1"
         >
           {theme === 'dark' ? (
             <Sun className="size-4" />
@@ -65,6 +81,7 @@ export function Header() {
 `;
 
 export const footerOrganism = `import Link from 'next/link';
+import { Github } from 'lucide-react';
 import { NAV_LINKS } from '@/data/constants/navigation';
 
 export function Footer() {
@@ -74,7 +91,7 @@ export function Footer() {
     <footer className="border-t border-border px-4 py-10 sm:px-6">
       <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-6 sm:flex-row">
         {/* Brand */}
-        <Link href="/" className="flex items-center gap-2 group">
+        <Link href="/" className="group flex items-center gap-2">
           <div className="flex size-6 items-center justify-center rounded-md border border-brand/20 bg-brand-subtle">
             <span className="text-xs font-bold text-brand">A</span>
           </div>
@@ -82,18 +99,30 @@ export function Footer() {
         </Link>
 
         {/* Links */}
-        <div className="flex items-center gap-4">
-          {NAV_LINKS.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              target={link.external ? '_blank' : undefined}
-              rel={link.external ? 'noopener noreferrer' : undefined}
-              className="text-sm text-txt-tertiary transition-colors duration-base hover:text-txt-primary"
-            >
-              {link.label}
-            </a>
-          ))}
+        <div className="flex items-center gap-5">
+          {NAV_LINKS.map((link) =>
+            link.label === 'GitHub' ? (
+              <a
+                key={link.href}
+                href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="GitHub repository"
+                className="flex items-center gap-1.5 text-sm text-txt-tertiary transition-colors duration-base hover:text-txt-primary"
+              >
+                <Github className="size-3.5" />
+                <span>GitHub</span>
+              </a>
+            ) : (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="text-sm text-txt-tertiary transition-colors duration-base hover:text-txt-primary"
+              >
+                {link.label}
+              </Link>
+            ),
+          )}
         </div>
 
         {/* Legal */}

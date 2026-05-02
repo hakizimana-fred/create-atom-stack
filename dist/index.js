@@ -1108,6 +1108,315 @@ function SectionLabel({
   );
 }
 `;
+var docsPage = `import type { ReactNode } from 'react';
+import { Header } from '@/components/organisms/header';
+import { Footer } from '@/components/organisms/footer';
+import { CodeBlock } from '@/components/molecules/code-block';
+
+export const metadata = { title: 'Docs' };
+
+/* \u2500\u2500\u2500 Static data \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+
+const SECTIONS = [
+  { id: 'introduction',  label: 'Introduction'      },
+  { id: 'installation',  label: 'Installation'      },
+  { id: 'cli-options',   label: 'CLI Options'       },
+  { id: 'structure',     label: 'Project Structure' },
+  { id: 'design-system', label: 'Design System'     },
+] as const;
+
+const INSTALL_COMMANDS = [
+  { prompt: '$', code: 'npx create-atom-stack my-app',               comment: '# scaffold a new project' },
+  { prompt: '$', code: 'npx create-atom-stack my-app --skip-install', comment: '# skip npm install'      },
+  { prompt: '$', code: 'cd my-app && npm run dev',                    comment: '# start dev server'      },
+];
+
+const FILE_TREE = \`my-app/
+\u251C\u2500\u2500 src/
+\u2502   \u251C\u2500\u2500 app/                    Next.js App Router (layout + pages)
+\u2502   \u251C\u2500\u2500 components/
+\u2502   \u2502   \u251C\u2500\u2500 atoms/              Primitives: button, badge, card, input, loading
+\u2502   \u2502   \u251C\u2500\u2500 molecules/          Composed: code-block, feature-card, pagination
+\u2502   \u2502   \u2514\u2500\u2500 organisms/          Layout: header, footer
+\u2502   \u251C\u2500\u2500 store/                  Zustand slices (ui.store.ts)
+\u2502   \u251C\u2500\u2500 lib/
+\u2502   \u2502   \u251C\u2500\u2500 api/client.ts       Typed fetch wrapper (get/post/put/patch/delete)
+\u2502   \u2502   \u2514\u2500\u2500 utils/              cn \xB7 format helpers
+\u2502   \u251C\u2500\u2500 hooks/                  use-scroll-state
+\u2502   \u251C\u2500\u2500 types/                  Shared TypeScript types
+\u2502   \u2514\u2500\u2500 design-system/tokens/   JS mirrors of CSS custom properties
+\u251C\u2500\u2500 tailwind.config.ts          Token-driven Tailwind configuration
+\u251C\u2500\u2500 jest.config.ts              Jest + Testing Library setup
+\u251C\u2500\u2500 ARCHITECTURE.md             Full project documentation
+\u2514\u2500\u2500 .env.example                Environment variable template\`;
+
+const CLI_OPTIONS = [
+  { flag: '<project-name>', required: true,  desc: 'Directory name for the new project (letters, numbers, hyphens)'   },
+  { flag: '--skip-install', required: false, desc: 'Skip running npm install \u2014 useful for offline or CI environments' },
+];
+
+const TOKEN_GROUPS = [
+  { group: '--brand-*',                    desc: 'Primary interactive color (indigo by default)'            },
+  { group: '--glass-*',                    desc: 'Translucent surfaces, paired with backdrop-filter: blur'  },
+  { group: '--surface-*',                  desc: 'Solid background hierarchy (page \u2192 base \u2192 raised \u2192 overlay)' },
+  { group: '--text-*',                     desc: 'Text color scale: primary, secondary, tertiary, disabled' },
+  { group: '--border-*',                   desc: 'Border and divider tokens'                                },
+  { group: '--success / --error / --warning', desc: 'Semantic status colors with subtle and text variants'  },
+];
+
+/* \u2500\u2500\u2500 Page \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+
+export default function DocsPage() {
+  return (
+    <div className="flex min-h-dvh flex-col bg-surface-page">
+      <Header />
+
+      <main className="flex-1 px-4 py-16">
+        <div className="mx-auto max-w-3xl">
+
+          {/* \u2500\u2500 Page header \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+          <div className="mb-16 border-b border-border pb-12">
+            <div className="mb-5 flex items-center gap-2.5">
+              <span className="size-1.5 rounded-full bg-brand animate-pulse-glow" />
+              <span className="font-mono text-xs tracking-widest text-txt-tertiary uppercase">
+                Documentation
+              </span>
+            </div>
+
+            <h1 className="text-3xl font-semibold tracking-tight text-txt-primary sm:text-4xl">
+              create-atom-stack
+            </h1>
+            <p className="mt-4 max-w-lg text-txt-secondary">
+              A CLI scaffold for production-ready Next.js projects with atomic design,
+              Tailwind CSS v4, Zustand, and full DX tooling \u2014 ready in seconds.
+            </p>
+
+            {/* Quick section nav */}
+            <div className="mt-8 flex flex-wrap gap-2">
+              {SECTIONS.map((s) => (
+                <a
+                  key={s.id}
+                  href={'#' + s.id}
+                  className="rounded-pill border border-border bg-glass px-3 py-1 font-mono text-xs text-txt-secondary transition-colors duration-base hover:border-brand/30 hover:text-txt-primary"
+                >
+                  {s.label}
+                </a>
+              ))}
+            </div>
+          </div>
+
+          {/* \u2500\u2500 Introduction \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+          <DocSection id="introduction" title="Introduction">
+            <p className="text-txt-secondary leading-relaxed">
+              <strong className="font-medium text-txt-primary">create-atom-stack</strong> is an
+              open-source CLI that generates a complete Next.js 15 project in one command. It
+              bundles atomic design principles, a token-driven Tailwind CSS v4 design system,
+              Zustand state management, and production-grade DX tooling \u2014 all wired up and ready
+              to extend.
+            </p>
+            <p className="mt-4 text-txt-secondary leading-relaxed">
+              The generated project is a clean slate: no business logic, no company-specific
+              styling, no unnecessary abstractions. Every file has a clear purpose and is meant to
+              grow with your application.
+            </p>
+
+            <div className="mt-6 glass-panel rounded-xl p-5">
+              <p className="font-mono text-xs text-txt-tertiary mb-3 uppercase tracking-wider">Included in every project</p>
+              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {[
+                  'Next.js 15 App Router',
+                  'TypeScript 5 (strict)',
+                  'Tailwind CSS v4',
+                  'Zustand v5',
+                  'ESLint 9 flat config',
+                  'Prettier + Husky hooks',
+                  'Commitlint (Conventional Commits)',
+                  'Jest + Testing Library',
+                ].map((item) => (
+                  <li key={item} className="flex items-center gap-2 text-sm text-txt-secondary">
+                    <span className="size-1 shrink-0 rounded-full bg-brand/60" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </DocSection>
+
+          {/* \u2500\u2500 Installation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+          <DocSection id="installation" title="Installation">
+            <p className="mb-5 text-txt-secondary">
+              No global install required. Run directly with{' '}
+              <code className="rounded bg-glass px-1.5 py-0.5 font-mono text-sm text-brand">npx</code>:
+            </p>
+
+            <CodeBlock title="~ terminal" lines={INSTALL_COMMANDS} />
+
+            <div className="mt-5 overflow-hidden rounded-xl border border-border">
+              <div className="border-b border-border bg-surface-overlay px-4 py-2.5">
+                <p className="font-mono text-xs text-txt-tertiary">Requirements</p>
+              </div>
+              <div className="bg-surface-sunken p-4">
+                <ul className="flex flex-col gap-2 font-mono text-xs text-txt-secondary">
+                  <li className="flex items-center gap-2">
+                    <span className="size-1 rounded-full bg-success/60" />
+                    Node.js &gt;= 18.0.0
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="size-1 rounded-full bg-success/60" />
+                    npm &gt;= 9.0.0
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="size-1 rounded-full bg-txt-tertiary/40" />
+                    Git \u2014 optional, required for Husky hook setup
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </DocSection>
+
+          {/* \u2500\u2500 CLI Options \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+          <DocSection id="cli-options" title="CLI Options">
+            <div className="overflow-hidden rounded-xl border border-border">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-border bg-surface-overlay">
+                    <th className="px-4 py-3 font-mono text-xs font-medium text-txt-tertiary">Flag</th>
+                    <th className="px-4 py-3 font-mono text-xs font-medium text-txt-tertiary">Required</th>
+                    <th className="px-4 py-3 font-mono text-xs font-medium text-txt-tertiary">Description</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-surface-sunken">
+                  {CLI_OPTIONS.map((opt, i) => (
+                    <tr
+                      key={opt.flag}
+                      className={i < CLI_OPTIONS.length - 1 ? 'border-b border-border' : ''}
+                    >
+                      <td className="px-4 py-3.5">
+                        <code className="font-mono text-sm text-brand">{opt.flag}</code>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className={['font-mono text-xs', opt.required ? 'text-success-text' : 'text-txt-tertiary'].join(' ')}>
+                          {opt.required ? 'yes' : 'no'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 text-sm text-txt-secondary">{opt.desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </DocSection>
+
+          {/* \u2500\u2500 Project Structure \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+          <DocSection id="structure" title="Project Structure">
+            <p className="mb-5 text-txt-secondary leading-relaxed">
+              The generated project follows{' '}
+              <strong className="font-medium text-txt-primary">atomic design</strong>: UI is
+              organised into atoms (primitives), molecules (composed atoms), and organisms
+              (layout-level components). Each layer has a clear scope \u2014 atoms know nothing about
+              the domain, organisms can hold state and data.
+            </p>
+
+            <CodeBlock title="my-app/" content={FILE_TREE} />
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              {[
+                { layer: 'atoms/', color: 'text-brand',   desc: 'Stateless primitives, no domain knowledge'     },
+                { layer: 'molecules/', color: 'text-brand', desc: 'Composed atoms, one interaction pattern each' },
+                { layer: 'organisms/', color: 'text-brand', desc: 'Layout-level, may hold state or fetch data'   },
+              ].map((l) => (
+                <div key={l.layer} className="flex-1 rounded-xl border border-border bg-surface-sunken p-4">
+                  <code className={'font-mono text-xs ' + l.color}>{l.layer}</code>
+                  <p className="mt-1 text-xs text-txt-tertiary">{l.desc}</p>
+                </div>
+              ))}
+            </div>
+          </DocSection>
+
+          {/* \u2500\u2500 Design System \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+          <DocSection id="design-system" title="Design System">
+            <p className="mb-5 text-txt-secondary leading-relaxed">
+              All visual decisions are CSS custom properties in{' '}
+              <code className="rounded bg-glass px-1.5 py-0.5 font-mono text-sm text-brand">
+                src/app/globals.css
+              </code>
+              , mapped to Tailwind utilities in{' '}
+              <code className="rounded bg-glass px-1.5 py-0.5 font-mono text-sm text-brand">
+                tailwind.config.ts
+              </code>
+              . Dark mode is the default \u2014 switching themes sets a{' '}
+              <code className="rounded bg-glass px-1.5 py-0.5 font-mono text-sm text-brand">
+                data-theme
+              </code>{' '}
+              attribute on{' '}
+              <code className="rounded bg-glass px-1.5 py-0.5 font-mono text-sm text-brand">
+                &lt;html&gt;
+              </code>
+              , so no{' '}
+              <code className="rounded bg-glass px-1.5 py-0.5 font-mono text-sm text-brand">
+                dark:
+              </code>{' '}
+              Tailwind variants are needed.
+            </p>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {TOKEN_GROUPS.map((t) => (
+                <div key={t.group} className="glass-panel rounded-xl p-4 shadow-glass-xs">
+                  <code className="font-mono text-xs text-brand">{t.group}</code>
+                  <p className="mt-1.5 text-xs text-txt-tertiary leading-relaxed">{t.desc}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 glass-panel rounded-xl p-5 shadow-glass-xs">
+              <p className="mb-3 font-mono text-xs text-txt-tertiary uppercase tracking-wider">
+                Theme switching
+              </p>
+              <CodeBlock
+                lines={[
+                  { prompt: '//', code: "document.documentElement.setAttribute('data-theme', 'light')" },
+                  { prompt: '//', code: "document.documentElement.setAttribute('data-theme', 'dark')" },
+                ]}
+              />
+              <p className="mt-3 text-xs text-txt-tertiary">
+                The{' '}
+                <code className="font-mono text-brand">useUiStore</code> Zustand store handles
+                this for you \u2014 call <code className="font-mono text-brand">toggleTheme()</code>{' '}
+                and the attribute updates automatically.
+              </p>
+            </div>
+          </DocSection>
+
+        </div>
+      </main>
+
+      <Footer />
+    </div>
+  );
+}
+
+/* \u2500\u2500\u2500 Helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+
+function DocSection({
+  id,
+  title,
+  children,
+}: {
+  id: string;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section id={id} className="mb-16 scroll-mt-20">
+      <div className="mb-6 flex items-center gap-3">
+        <span className="h-px w-6 shrink-0 bg-brand/50" />
+        <h2 className="text-lg font-semibold text-txt-primary">{title}</h2>
+      </div>
+      <div>{children}</div>
+    </section>
+  );
+}
+`;
 
 // src/templates/atoms.ts
 var buttonAtom = `import { cn } from '@/lib/utils/cn';
@@ -1651,7 +1960,7 @@ export function Pagination({ page, pageSize, total, onPageChange, className }: P
 var headerOrganism = `'use client';
 
 import Link from 'next/link';
-import { Moon, Sun } from 'lucide-react';
+import { Moon, Sun, Github } from 'lucide-react';
 import { Button } from '@/components/atoms/button';
 import { useUiStore } from '@/store/ui.store';
 import { useScrollState } from '@/hooks/use-scroll-state';
@@ -1673,7 +1982,7 @@ export function Header() {
       )}
     >
       {/* Logo */}
-      <Link href="/" className="flex items-center gap-2 group">
+      <Link href="/" className="group flex items-center gap-2">
         <div className="flex size-7 items-center justify-center rounded-lg border border-brand/20 bg-brand-subtle transition-colors duration-base group-hover:bg-brand-muted">
           <span className="text-xs font-bold text-brand">A</span>
         </div>
@@ -1683,24 +1992,40 @@ export function Header() {
       </Link>
 
       {/* Navigation */}
-      <nav className="flex items-center gap-1">
-        {NAV_LINKS.map((link) => (
-          <a
-            key={link.href}
-            href={link.href}
-            target={link.external ? '_blank' : undefined}
-            rel={link.external ? 'noopener noreferrer' : undefined}
-            className="hidden px-3 py-1.5 text-sm text-txt-secondary transition-colors duration-base hover:text-txt-primary sm:block"
-          >
-            {link.label}
-          </a>
-        ))}
+      <nav className="flex items-center gap-0.5">
+        {NAV_LINKS.map((link) =>
+          link.label === 'GitHub' ? (
+            <a
+              key={link.href}
+              href={link.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="View source on GitHub"
+              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-txt-secondary transition-colors duration-base hover:bg-glass hover:text-txt-primary"
+            >
+              <Github className="size-4 shrink-0" />
+              <span className="hidden sm:block">GitHub</span>
+            </a>
+          ) : (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="group relative hidden px-3 py-1.5 text-sm text-txt-secondary transition-colors duration-base hover:text-txt-primary sm:block"
+            >
+              {link.label}
+              {/* Slide-in underline */}
+              <span className="absolute bottom-0.5 left-3 right-3 h-px origin-left scale-x-0 bg-brand/50 transition-transform duration-base group-hover:scale-x-100" />
+            </Link>
+          ),
+        )}
 
+        {/* Theme toggle */}
         <Button
           variant="ghost"
           size="sm"
           onClick={toggleTheme}
           aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          className="ml-1"
         >
           {theme === 'dark' ? (
             <Sun className="size-4" />
@@ -1714,6 +2039,7 @@ export function Header() {
 }
 `;
 var footerOrganism = `import Link from 'next/link';
+import { Github } from 'lucide-react';
 import { NAV_LINKS } from '@/data/constants/navigation';
 
 export function Footer() {
@@ -1723,7 +2049,7 @@ export function Footer() {
     <footer className="border-t border-border px-4 py-10 sm:px-6">
       <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-6 sm:flex-row">
         {/* Brand */}
-        <Link href="/" className="flex items-center gap-2 group">
+        <Link href="/" className="group flex items-center gap-2">
           <div className="flex size-6 items-center justify-center rounded-md border border-brand/20 bg-brand-subtle">
             <span className="text-xs font-bold text-brand">A</span>
           </div>
@@ -1731,18 +2057,30 @@ export function Footer() {
         </Link>
 
         {/* Links */}
-        <div className="flex items-center gap-4">
-          {NAV_LINKS.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              target={link.external ? '_blank' : undefined}
-              rel={link.external ? 'noopener noreferrer' : undefined}
-              className="text-sm text-txt-tertiary transition-colors duration-base hover:text-txt-primary"
-            >
-              {link.label}
-            </a>
-          ))}
+        <div className="flex items-center gap-5">
+          {NAV_LINKS.map((link) =>
+            link.label === 'GitHub' ? (
+              <a
+                key={link.href}
+                href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="GitHub repository"
+                className="flex items-center gap-1.5 text-sm text-txt-tertiary transition-colors duration-base hover:text-txt-primary"
+              >
+                <Github className="size-3.5" />
+                <span>GitHub</span>
+              </a>
+            ) : (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="text-sm text-txt-tertiary transition-colors duration-base hover:text-txt-primary"
+              >
+                {link.label}
+              </Link>
+            ),
+          )}
         </div>
 
         {/* Legal */}
@@ -2070,9 +2408,8 @@ var navigationConstants = `export interface NavLink {
 }
 
 export const NAV_LINKS: NavLink[] = [
-  { label: 'Docs',   href: '#docs'  },
-  { label: 'About',  href: '#about' },
-  { label: 'GitHub', href: 'https://github.com', external: true },
+  { label: 'Docs',   href: '/docs' },
+  { label: 'GitHub', href: 'https://github.com/hakizimana-fred/create-atom-stack', external: true },
 ];
 `;
 
@@ -2494,6 +2831,7 @@ function getFileMap(projectName) {
     "src/app/globals.css": globalsCss,
     "src/app/layout.tsx": rootLayout(projectName),
     "src/app/page.tsx": rootPage,
+    "src/app/docs/page.tsx": docsPage,
     /* ── Atoms ─────────────────────────────────────────────────────────── */
     "src/components/atoms/button/index.tsx": buttonAtom,
     "src/components/atoms/badge/index.tsx": badgeAtom,
