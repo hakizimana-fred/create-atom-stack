@@ -1,3 +1,11 @@
+export const jotaiStore = `import { atom } from 'jotai';
+
+type Theme = 'light' | 'dark';
+
+export const themeAtom = atom<Theme>('dark');
+export const sidebarOpenAtom = atom<boolean>(true);
+`;
+
 export const uiStore = `import { create } from 'zustand';
 
 type Theme = 'light' | 'dark';

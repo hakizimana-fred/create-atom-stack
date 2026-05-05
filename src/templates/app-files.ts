@@ -4,18 +4,9 @@ export function rootLayout(projectName: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
   return `import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
 import './globals.css';
-
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-});
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-});
 
 export const metadata: Metadata = {
   title: { default: '${title}', template: '%s | ${title}' },
@@ -29,8 +20,8 @@ export default function RootLayout({
     <html lang="en" data-theme="dark" suppressHydrationWarning>
       <body
         className={[
-          geistSans.variable,
-          geistMono.variable,
+          GeistSans.variable,
+          GeistMono.variable,
           'antialiased font-sans text-base text-txt-primary bg-surface-page min-h-dvh',
         ].join(' ')}
       >

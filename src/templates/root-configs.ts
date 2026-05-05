@@ -117,6 +117,11 @@ export const nvmrc = `22.19.0
 `;
 
 export const npmrc = `engine-strict=true
+fetch-timeout=300000
+fetch-retries=5
+fetch-retry-mintimeout=20000
+fetch-retry-maxtimeout=120000
+network-concurrency=4
 `;
 
 export const envExample = `# API base URL (server-side)
@@ -145,6 +150,7 @@ const config: Config = {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   testMatch: ['**/__tests__/**/*.test.{ts,tsx}', '**/*.test.{ts,tsx}'],
+  testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/e2e/'],
 };
 
 export default createJestConfig(config);
@@ -152,3 +158,39 @@ export default createJestConfig(config);
 
 export const jestSetup = `import '@testing-library/jest-dom';
 `;
+
+export function playwrightConfig(pm: 'npm' | 'pnpm' | 'yarn' | 'bun'): string {
+  const devCmd =
+    pm === 'npm'  ? 'npm run dev'
+    : pm === 'pnpm' ? 'pnpm dev'
+    : pm === 'yarn' ? 'yarn dev'
+    : 'bun dev';
+
+  return `import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './e2e',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: 'html',
+  use: {
+    baseURL: 'http://localhost:3000',
+    trace: 'on-first-retry',
+  },
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
+  webServer: {
+    command: '${devCmd}',
+    url: 'http://localhost:3000',
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
+});
+`;
+}

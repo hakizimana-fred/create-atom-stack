@@ -1,4 +1,4 @@
-import { packageJsonTemplate } from './package-json.js';
+import { packageJsonTemplate, type ScaffoldOptions } from './package-json.js';
 import {
   tsconfigJson,
   nextConfig,
@@ -12,6 +12,7 @@ import {
   nextEnvDts,
   jestConfig,
   jestSetup,
+  playwrightConfig,
 } from './root-configs.js';
 import {
   eslintConfig,
@@ -24,6 +25,7 @@ import {
   vsCodeLaunch,
   vsCodeExtensions,
 } from './tooling.js';
+
 import { tailwindConfig, globalsCss } from './tailwind-and-styles.js';
 import { rootLayout, rootPage, docsPage } from './app-files.js';
 import { buttonAtom, badgeAtom, cardAtom, inputAtom, loadingAtom, typographyAtom } from './atoms.js';
@@ -38,6 +40,7 @@ import {
 } from './design-tokens.js';
 import {
   uiStore,
+  jotaiStore,
   commonTypes,
   typesIndex,
   cnUtil,
@@ -47,13 +50,27 @@ import {
   navigationConstants,
 } from './state-and-utils.js';
 import { architectureMd, gettingStartedMd, designSystemMd } from './docs.js';
+import {
+  homeSpec,
+  docsSpec,
+  cypressConfig,
+  cypressSupport,
+  cypressHomeSpec,
+  cypressDocsSpec,
+} from './e2e.js';
 
+export type { ScaffoldOptions };
 export type FileMap = Record<string, string>;
 
-export function getFileMap(projectName: string): FileMap {
+export function getFileMap(projectName: string, opts: ScaffoldOptions): FileMap {
+  const storeFile =
+    opts.stateManagement === 'zustand' ? uiStore
+    : opts.stateManagement === 'jotai'  ? jotaiStore
+    : null;
+
   return {
     /* ── Root config files ─────────────────────────────────────────────── */
-    'package.json':            packageJsonTemplate(projectName),
+    'package.json':            packageJsonTemplate(projectName, opts),
     'tsconfig.json':           tsconfigJson,
     'next.config.ts':          nextConfig,
     'postcss.config.mjs':      postCssConfig,
@@ -64,19 +81,32 @@ export function getFileMap(projectName: string): FileMap {
     '.nvmrc':                  nvmrc,
     '.npmrc':                  npmrc,
     '.env.example':            envExample,
+    /* yarn berry requires a lockfile at the project root to stop upward traversal,
+       and nodeLinker: node-modules for Next.js / jest compatibility */
+    ...(opts.pm === 'yarn' ? {
+      'yarn.lock':    '',
+      '.yarnrc.yml':  [
+        'nodeLinker: node-modules',
+        'npmRegistryServer: "https://registry.npmjs.org"',
+        'httpTimeout: 300000',
+        'httpRetry: 5',
+        'networkConcurrency: 4',
+        '',
+      ].join('\n'),
+    } : {}),
     'next-env.d.ts':           nextEnvDts,
     'jest.config.ts':          jestConfig,
     'jest.setup.ts':           jestSetup,
 
     /* ── Tooling ───────────────────────────────────────────────────────── */
     'eslint.config.mjs':       eslintConfig,
-    'commitlint.config.ts':    commitlintConfig,
-    '.releaserc':              releaserc,
-
-    /* ── Husky hooks ───────────────────────────────────────────────────── */
-    '.husky/pre-commit':       huskyPreCommit,
-    '.husky/commit-msg':       huskyCommitMsg,
-    '.husky/pre-push':         huskyPrePush,
+    ...(opts.conventionalCommits ? {
+      'commitlint.config.ts':  commitlintConfig,
+      '.releaserc':            releaserc,
+      '.husky/pre-commit':     huskyPreCommit(opts.pm),
+      '.husky/commit-msg':     huskyCommitMsg,
+      '.husky/pre-push':       huskyPrePush(opts.pm),
+    } : {}),
 
     /* ── VSCode ────────────────────────────────────────────────────────── */
     '.vscode/settings.json':   vsCodeSettings,
@@ -114,7 +144,7 @@ export function getFileMap(projectName: string): FileMap {
     'src/design-system/tokens/shadows.ts':    shadowsToken,
 
     /* ── Store ─────────────────────────────────────────────────────────── */
-    'src/store/ui.store.ts': uiStore,
+    ...(storeFile ? { 'src/store/ui.store.ts': storeFile } : {}),
 
     /* ── Types ─────────────────────────────────────────────────────────── */
     'src/types/common.ts': commonTypes,
@@ -130,6 +160,19 @@ export function getFileMap(projectName: string): FileMap {
 
     /* ── Data ──────────────────────────────────────────────────────────── */
     'src/data/constants/navigation.ts': navigationConstants,
+
+    /* ── E2E tests ─────────────────────────────────────────────────────── */
+    ...(opts.e2e === 'playwright' ? {
+      'playwright.config.ts': playwrightConfig(opts.pm),
+      'e2e/home.spec.ts':     homeSpec,
+      'e2e/docs.spec.ts':     docsSpec,
+    } : {}),
+    ...(opts.e2e === 'cypress' ? {
+      'cypress.config.ts':       cypressConfig,
+      'cypress/support/e2e.ts':  cypressSupport,
+      'cypress/e2e/home.cy.ts':  cypressHomeSpec,
+      'cypress/e2e/docs.cy.ts':  cypressDocsSpec,
+    } : {}),
 
     /* ── Docs ──────────────────────────────────────────────────────────── */
     'ARCHITECTURE.md':         architectureMd(projectName),

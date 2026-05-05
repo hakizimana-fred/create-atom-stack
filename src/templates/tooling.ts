@@ -79,15 +79,19 @@ export const releaserc = JSON.stringify(
   2,
 );
 
-export const huskyPreCommit = `npm run lint
-`;
+export function huskyPreCommit(pm: 'npm' | 'pnpm' | 'yarn' | 'bun'): string {
+  const run = pm === 'npm' ? 'npm run' : pm === 'yarn' ? 'yarn' : pm === 'bun' ? 'bun run' : 'pnpm';
+  return `${run} lint\n`;
+}
 
 export const huskyCommitMsg = `#!/usr/bin/env sh
 npx --no -- commitlint --edit "$1"
 `;
 
-export const huskyPrePush = `npm run build
-`;
+export function huskyPrePush(pm: 'npm' | 'pnpm' | 'yarn' | 'bun'): string {
+  const run = pm === 'npm' ? 'npm run' : pm === 'yarn' ? 'yarn' : pm === 'bun' ? 'bun run' : 'pnpm';
+  return `${run} build\n`;
+}
 
 export const vsCodeSettings = JSON.stringify(
   {

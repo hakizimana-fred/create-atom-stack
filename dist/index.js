@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 // src/index.ts
+import * as p from "@clack/prompts";
 import chalk2 from "chalk";
 import ora from "ora";
 
@@ -11,37 +12,56 @@ import { execSync, spawn } from "child_process";
 import chalk from "chalk";
 
 // src/templates/package-json.ts
-function packageJsonTemplate(name) {
+function packageJsonTemplate(name, opts) {
+  const expectedPackageManager = opts.pm;
+  const packageManagerCheck = `node -e "const ua=process.env.npm_config_user_agent||''; const pm='` + expectedPackageManager + "/'; if (!ua.startsWith(pm)) { console.error('Use " + expectedPackageManager + ` to install dependencies.'); process.exit(1); }"`;
+  const stateDep = opts.stateManagement === "zustand" ? { zustand: "^5.0.11" } : opts.stateManagement === "jotai" ? { jotai: "^2.11.3" } : {};
+  const e2eDep = opts.e2e === "playwright" ? { "@playwright/test": "^1.52.0" } : opts.e2e === "cypress" ? { cypress: "^13.17.0" } : {};
+  const e2eScripts = opts.e2e === "playwright" ? {
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed"
+  } : opts.e2e === "cypress" ? {
+    "test:e2e": "cypress run",
+    "test:e2e:open": "cypress open"
+  } : {};
+  const engines = { node: ">=18.0.0" };
+  if (opts.pm === "npm") engines.npm = ">=9.0.0";
+  if (opts.pm === "pnpm") engines.pnpm = ">=9.0.0";
+  if (opts.pm === "yarn") engines.yarn = ">=1.22.0";
+  if (opts.pm === "bun") engines.bun = ">=1.0.0";
   return JSON.stringify(
     {
       name,
       version: "0.1.0",
       private: true,
-      engines: {
-        node: ">=18.0.0",
-        npm: ">=9.0.0"
-      },
+      engines,
       scripts: {
+        preinstall: packageManagerCheck,
         dev: "next dev",
         build: "next build",
         start: "next start",
         lint: "eslint",
         prettier: "prettier --write .",
-        prepare: "husky",
+        ...opts.conventionalCommits ? { prepare: "husky" } : {},
         test: "jest",
-        "test:watch": "jest --watch"
+        "test:watch": "jest --watch",
+        ...e2eScripts
       },
       dependencies: {
+        geist: "^1.3.1",
         "lucide-react": "^0.474.0",
-        next: "15.3.2",
+        next: "15.3.8",
         react: "19.1.0",
         "react-dom": "19.1.0",
-        zustand: "^5.0.11"
+        ...stateDep
       },
       devDependencies: {
-        "@commitlint/cli": "^20.4.2",
-        "@commitlint/config-conventional": "^20.4.2",
-        "@commitlint/types": "^20.4.0",
+        ...opts.conventionalCommits ? {
+          "@commitlint/cli": "^20.4.2",
+          "@commitlint/config-conventional": "^20.4.2",
+          "@commitlint/types": "^20.4.0"
+        } : {},
         "@tailwindcss/postcss": "^4",
         "@testing-library/jest-dom": "^6.9.1",
         "@testing-library/react": "^16.3.2",
@@ -50,9 +70,10 @@ function packageJsonTemplate(name) {
         "@types/node": "^20",
         "@types/react": "^19",
         "@types/react-dom": "^19",
+        ...e2eDep,
         eslint: "^9",
-        "eslint-config-next": "15.3.2",
-        husky: "^9.1.7",
+        "eslint-config-next": "15.3.8",
+        ...opts.conventionalCommits ? { husky: "^9.1.7" } : {},
         jest: "^30.0.0",
         "jest-environment-jsdom": "^30.0.0",
         prettier: "^3.8.1",
@@ -179,6 +200,11 @@ next-env.d.ts
 var nvmrc = `22.19.0
 `;
 var npmrc = `engine-strict=true
+fetch-timeout=300000
+fetch-retries=5
+fetch-retry-mintimeout=20000
+fetch-retry-maxtimeout=120000
+network-concurrency=4
 `;
 var envExample = `# API base URL (server-side)
 API_URL=http://localhost:3001
@@ -204,12 +230,43 @@ const config: Config = {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   testMatch: ['**/__tests__/**/*.test.{ts,tsx}', '**/*.test.{ts,tsx}'],
+  testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/e2e/'],
 };
 
 export default createJestConfig(config);
 `;
 var jestSetup = `import '@testing-library/jest-dom';
 `;
+function playwrightConfig(pm) {
+  const devCmd = pm === "npm" ? "npm run dev" : pm === "pnpm" ? "pnpm dev" : pm === "yarn" ? "yarn dev" : "bun dev";
+  return `import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './e2e',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: 'html',
+  use: {
+    baseURL: 'http://localhost:3000',
+    trace: 'on-first-retry',
+  },
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
+  webServer: {
+    command: '${devCmd}',
+    url: 'http://localhost:3000',
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
+});
+`;
+}
 
 // src/templates/tooling.ts
 var eslintConfig = `import { defineConfig, globalIgnores } from 'eslint/config';
@@ -290,13 +347,19 @@ var releaserc = JSON.stringify(
   null,
   2
 );
-var huskyPreCommit = `npm run lint
+function huskyPreCommit(pm) {
+  const run = pm === "npm" ? "npm run" : pm === "yarn" ? "yarn" : pm === "bun" ? "bun run" : "pnpm";
+  return `${run} lint
 `;
+}
 var huskyCommitMsg = `#!/usr/bin/env sh
 npx --no -- commitlint --edit "$1"
 `;
-var huskyPrePush = `npm run build
+function huskyPrePush(pm) {
+  const run = pm === "npm" ? "npm run" : pm === "yarn" ? "yarn" : pm === "bun" ? "bun run" : "pnpm";
+  return `${run} build
 `;
+}
 var vsCodeSettings = JSON.stringify(
   {
     "editor.defaultFormatter": "esbenp.prettier-vscode",
@@ -827,18 +890,9 @@ html {
 function rootLayout(projectName) {
   const title = projectName.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   return `import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
 import './globals.css';
-
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-});
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-});
 
 export const metadata: Metadata = {
   title: { default: '${title}', template: '%s | ${title}' },
@@ -852,8 +906,8 @@ export default function RootLayout({
     <html lang="en" data-theme="dark" suppressHydrationWarning>
       <body
         className={[
-          geistSans.variable,
-          geistMono.variable,
+          GeistSans.variable,
+          GeistMono.variable,
           'antialiased font-sans text-base text-txt-primary bg-surface-page min-h-dvh',
         ].join(' ')}
       >
@@ -2217,6 +2271,13 @@ export const glow = {
 `;
 
 // src/templates/state-and-utils.ts
+var jotaiStore = `import { atom } from 'jotai';
+
+type Theme = 'light' | 'dark';
+
+export const themeAtom = atom<Theme>('dark');
+export const sidebarOpenAtom = atom<boolean>(true);
+`;
 var uiStore = `import { create } from 'zustand';
 
 type Theme = 'light' | 'dark';
@@ -2797,11 +2858,112 @@ ${B3}
 `;
 }
 
+// src/templates/e2e.ts
+var cypressConfig = `import { defineConfig } from 'cypress';
+
+export default defineConfig({
+  e2e: {
+    baseUrl: 'http://localhost:3000',
+    specPattern: 'cypress/e2e/**/*.cy.{ts,tsx}',
+    supportFile: 'cypress/support/e2e.ts',
+  },
+});
+`;
+var cypressSupport = `// Cypress support file \u2014 add global hooks and custom commands here.
+`;
+var cypressHomeSpec = `describe('Home page', () => {
+  it('loads and has a title', () => {
+    cy.visit('/');
+    cy.title().should('not.be.empty');
+  });
+
+  it('displays an h1 heading', () => {
+    cy.visit('/');
+    cy.get('h1').should('be.visible');
+  });
+
+  it('renders the header navigation', () => {
+    cy.visit('/');
+    cy.get('nav').should('be.visible');
+  });
+});
+`;
+var cypressDocsSpec = `describe('Docs page', () => {
+  it('is reachable directly', () => {
+    cy.visit('/docs');
+    cy.get('main').should('be.visible');
+  });
+
+  it('is accessible via the Docs nav link', () => {
+    cy.visit('/');
+    cy.get('nav').contains(/docs/i).click();
+    cy.url().should('include', '/docs');
+    cy.get('main').should('be.visible');
+  });
+});
+`;
+var homeSpec = `import { test, expect } from '@playwright/test';
+
+test.describe('Home page', () => {
+  test('loads and has a title', async ({ page }) => {
+    await page.goto('/');
+    await expect(page).toHaveTitle(/.+/);
+  });
+
+  test('displays an h1 heading', async ({ page }) => {
+    await page.goto('/');
+    const heading = page.getByRole('heading', { level: 1 });
+    await expect(heading).toBeVisible();
+  });
+
+  test('renders the header navigation', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('navigation')).toBeVisible();
+  });
+
+  test('has no broken internal links on the nav', async ({ page }) => {
+    await page.goto('/');
+    const internalLinks = page.getByRole('navigation').getByRole('link');
+    const hrefs = await internalLinks.evaluateAll((els) =>
+      (els as HTMLAnchorElement[])
+        .map((el) => el.getAttribute('href') ?? '')
+        .filter((h) => h.startsWith('/')),
+    );
+    for (const href of hrefs) {
+      const res = await page.request.get(href);
+      expect(res.status(), \`\${href} returned \${res.status()}\`).toBeLessThan(400);
+    }
+  });
+});
+`;
+var docsSpec = `import { test, expect } from '@playwright/test';
+
+test.describe('Docs page', () => {
+  test('is reachable directly', async ({ page }) => {
+    const res = await page.goto('/docs');
+    expect(res?.status()).toBeLessThan(400);
+  });
+
+  test('renders visible main content', async ({ page }) => {
+    await page.goto('/docs');
+    await expect(page.getByRole('main')).toBeVisible();
+  });
+
+  test('is accessible via the Docs nav link', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('link', { name: /docs/i }).first().click();
+    await expect(page).toHaveURL(//docs/);
+    await expect(page.getByRole('main')).toBeVisible();
+  });
+});
+`;
+
 // src/templates/index.ts
-function getFileMap(projectName) {
+function getFileMap(projectName, opts) {
+  const storeFile = opts.stateManagement === "zustand" ? uiStore : opts.stateManagement === "jotai" ? jotaiStore : null;
   return {
     /* ── Root config files ─────────────────────────────────────────────── */
-    "package.json": packageJsonTemplate(projectName),
+    "package.json": packageJsonTemplate(projectName, opts),
     "tsconfig.json": tsconfigJson,
     "next.config.ts": nextConfig,
     "postcss.config.mjs": postCssConfig,
@@ -2812,17 +2974,31 @@ function getFileMap(projectName) {
     ".nvmrc": nvmrc,
     ".npmrc": npmrc,
     ".env.example": envExample,
+    /* yarn berry requires a lockfile at the project root to stop upward traversal,
+       and nodeLinker: node-modules for Next.js / jest compatibility */
+    ...opts.pm === "yarn" ? {
+      "yarn.lock": "",
+      ".yarnrc.yml": [
+        "nodeLinker: node-modules",
+        'npmRegistryServer: "https://registry.npmjs.org"',
+        "httpTimeout: 300000",
+        "httpRetry: 5",
+        "networkConcurrency: 4",
+        ""
+      ].join("\n")
+    } : {},
     "next-env.d.ts": nextEnvDts,
     "jest.config.ts": jestConfig,
     "jest.setup.ts": jestSetup,
     /* ── Tooling ───────────────────────────────────────────────────────── */
     "eslint.config.mjs": eslintConfig,
-    "commitlint.config.ts": commitlintConfig,
-    ".releaserc": releaserc,
-    /* ── Husky hooks ───────────────────────────────────────────────────── */
-    ".husky/pre-commit": huskyPreCommit,
-    ".husky/commit-msg": huskyCommitMsg,
-    ".husky/pre-push": huskyPrePush,
+    ...opts.conventionalCommits ? {
+      "commitlint.config.ts": commitlintConfig,
+      ".releaserc": releaserc,
+      ".husky/pre-commit": huskyPreCommit(opts.pm),
+      ".husky/commit-msg": huskyCommitMsg,
+      ".husky/pre-push": huskyPrePush(opts.pm)
+    } : {},
     /* ── VSCode ────────────────────────────────────────────────────────── */
     ".vscode/settings.json": vsCodeSettings,
     ".vscode/launch.json": vsCodeLaunch,
@@ -2853,7 +3029,7 @@ function getFileMap(projectName) {
     "src/design-system/tokens/radius.ts": radiusToken,
     "src/design-system/tokens/shadows.ts": shadowsToken,
     /* ── Store ─────────────────────────────────────────────────────────── */
-    "src/store/ui.store.ts": uiStore,
+    ...storeFile ? { "src/store/ui.store.ts": storeFile } : {},
     /* ── Types ─────────────────────────────────────────────────────────── */
     "src/types/common.ts": commonTypes,
     "src/types/index.ts": typesIndex,
@@ -2865,6 +3041,18 @@ function getFileMap(projectName) {
     "src/hooks/use-scroll-state.ts": useScrollState,
     /* ── Data ──────────────────────────────────────────────────────────── */
     "src/data/constants/navigation.ts": navigationConstants,
+    /* ── E2E tests ─────────────────────────────────────────────────────── */
+    ...opts.e2e === "playwright" ? {
+      "playwright.config.ts": playwrightConfig(opts.pm),
+      "e2e/home.spec.ts": homeSpec,
+      "e2e/docs.spec.ts": docsSpec
+    } : {},
+    ...opts.e2e === "cypress" ? {
+      "cypress.config.ts": cypressConfig,
+      "cypress/support/e2e.ts": cypressSupport,
+      "cypress/e2e/home.cy.ts": cypressHomeSpec,
+      "cypress/e2e/docs.cy.ts": cypressDocsSpec
+    } : {},
     /* ── Docs ──────────────────────────────────────────────────────────── */
     "ARCHITECTURE.md": architectureMd(projectName),
     "docs/getting-started.md": gettingStartedMd(projectName),
@@ -2873,6 +3061,32 @@ function getFileMap(projectName) {
 }
 
 // src/create.ts
+var PM_INSTALL = {
+  npm: ["npm", "install"],
+  pnpm: ["pnpm", "install"],
+  yarn: ["yarn", "install"],
+  bun: ["bun", "install"]
+};
+var PM_RUN = {
+  npm: (s) => ["npm", "run", s],
+  pnpm: (s) => ["pnpm", s],
+  yarn: (s) => ["yarn", s],
+  bun: (s) => ["bun", "run", s]
+};
+var PM_SUMMARY_RE = {
+  npm: /added (\d+) packages/i,
+  pnpm: /packages are hard linked|Packages: \+(\d+)/i,
+  yarn: /success Saved (\d+) new packages|Done in/i,
+  bun: /(\d+) packages? installed/i
+};
+function isPMAvailable(pm) {
+  try {
+    execSync(`${pm} --version`, { stdio: "pipe", shell: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
 var INSTALL_PHASES = [
   "Resolving dependency tree",
   "Fetching packages from registry",
@@ -2881,43 +3095,58 @@ var INSTALL_PHASES = [
   "Building package graph",
   "Running lifecycle scripts"
 ];
-function npmInstall(cwd, spinner2) {
+function runInstall(pm, cwd, spinner) {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
     let phaseIdx = 0;
     const elapsed = () => chalk.dim(` \xB7 ${Math.round((Date.now() - startTime) / 1e3)}s`);
-    spinner2.text = INSTALL_PHASES[0] + elapsed();
+    spinner.text = INSTALL_PHASES[0] + elapsed();
     const phaseTick = setInterval(() => {
       phaseIdx = (phaseIdx + 1) % INSTALL_PHASES.length;
-      spinner2.text = INSTALL_PHASES[phaseIdx] + elapsed();
+      spinner.text = INSTALL_PHASES[phaseIdx] + elapsed();
     }, 3e3);
-    const child = spawn("npm", ["install"], {
+    const [bin, ...args] = PM_INSTALL[pm];
+    const child = spawn(`${bin} ${args.join(" ")}`, [], {
       cwd,
-      stdio: ["ignore", "pipe", "pipe"]
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: true
     });
+    const errorLines = [];
     let lastPkgUpdate = 0;
     const onChunk = (chunk) => {
-      const text = chunk.toString();
+      const text2 = chunk.toString();
       const now = Date.now();
-      const summary = text.match(/added (\d+) packages/i);
+      for (const line of text2.split("\n")) {
+        if (/ERR_|error|Error/i.test(line) && line.trim()) {
+          errorLines.push(line.trim());
+        }
+      }
+      const summary = text2.match(PM_SUMMARY_RE[pm]);
       if (summary) {
         clearInterval(phaseTick);
-        spinner2.text = chalk.white(`Added ${summary[1]} packages`) + elapsed();
+        const count = summary[1] ?? "";
+        spinner.text = chalk.white(count ? `Installed ${count} packages` : "Packages installed") + elapsed();
         return;
       }
-      if (now - lastPkgUpdate < 400) return;
-      const pkg = text.match(/reify:(@?[a-z][a-z0-9._-]*(?:\/[a-z0-9._-]+)?)/i);
-      if (pkg) {
-        lastPkgUpdate = now;
-        spinner2.text = chalk.dim("\u21B3 ") + chalk.white(pkg[1]) + elapsed();
+      if (pm === "npm") {
+        if (now - lastPkgUpdate < 400) return;
+        const pkg = text2.match(/reify:(@?[a-z][a-z0-9._-]*(?:\/[a-z0-9._-]+)?)/i);
+        if (pkg) {
+          lastPkgUpdate = now;
+          spinner.text = chalk.dim("\u21B3 ") + chalk.white(pkg[1]) + elapsed();
+        }
       }
     };
     child.stdout?.on("data", onChunk);
     child.stderr?.on("data", onChunk);
     child.on("close", (code) => {
       clearInterval(phaseTick);
-      if (code === 0) resolve();
-      else reject(new Error(`npm install exited with code ${code}`));
+      if (code === 0) {
+        resolve();
+      } else {
+        const detail = errorLines.slice(-3).join(" | ");
+        reject(new Error(detail || `${pm} install exited with code ${code}`));
+      }
     });
     child.on("error", (err) => {
       clearInterval(phaseTick);
@@ -2925,64 +3154,115 @@ function npmInstall(cwd, spinner2) {
     });
   });
 }
-async function createProject(projectName, { skipInstall: skipInstall2, spinner: spinner2 }) {
+function installPlaywrightBrowsers(cwd) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      "node",
+      ["node_modules/.bin/playwright", "install", "chromium"],
+      { cwd, stdio: "pipe" }
+    );
+    child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`playwright install exited with code ${code}`)));
+    child.on("error", reject);
+  });
+}
+async function createProject(projectName, { skipInstall, pm, stateManagement, e2e, conventionalCommits, spinner }) {
   const projectDir = path.resolve(process.cwd(), projectName);
   if (fs.existsSync(projectDir)) {
     throw new Error(
       `Directory "${projectName}" already exists. Choose a different name or remove it first.`
     );
   }
-  spinner2.text = "Creating project directory...";
+  spinner.text = "Creating project directory...";
   fs.mkdirSync(projectDir, { recursive: true });
-  const fileMap = getFileMap(projectName);
+  const fileMap = getFileMap(projectName, { pm, stateManagement, e2e, conventionalCommits });
   const entries = Object.entries(fileMap);
   const total = entries.length;
   let written = 0;
-  spinner2.text = `Writing files... [0/${total}]`;
+  spinner.text = `Writing files... [0/${total}]`;
   for (const [filePath, content] of entries) {
     const fullPath = path.join(projectDir, filePath);
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
     fs.writeFileSync(fullPath, content, "utf-8");
     written++;
-    spinner2.text = `Writing files... [${written}/${total}]`;
+    spinner.text = `Writing files... [${written}/${total}]`;
   }
   for (const hook of [".husky/pre-commit", ".husky/commit-msg", ".husky/pre-push"]) {
     const hookPath = path.join(projectDir, hook);
     if (fs.existsSync(hookPath)) fs.chmodSync(hookPath, 493);
   }
-  spinner2.succeed(chalk.green(`${written} files written`));
-  if (!skipInstall2) {
-    spinner2.start(INSTALL_PHASES[0]);
+  spinner.succeed(chalk.green(`${written} files written`));
+  if (skipInstall) {
+    printDone(projectName, pm, stateManagement, e2e, conventionalCommits, true);
+    return;
+  }
+  if (!isPMAvailable(pm)) {
+    spinner.warn(
+      chalk.yellow(
+        `"${pm}" is not installed or not in PATH. Install it first: https://` + (pm === "pnpm" ? "pnpm.io/installation" : pm === "yarn" ? "yarnpkg.com/getting-started/install" : "bun.sh/docs/installation")
+      )
+    );
+    printDone(projectName, pm, stateManagement, e2e, conventionalCommits, true);
+    return;
+  }
+  spinner.start(INSTALL_PHASES[0]);
+  try {
+    await runInstall(pm, projectDir, spinner);
+    spinner.succeed(chalk.green("Dependencies installed"));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    spinner.fail(chalk.red(`${pm} install failed`));
+    console.log();
+    console.log("  " + chalk.yellow("\u26A0 Install error:") + chalk.dim(" " + msg));
+    console.log("  " + chalk.dim("Retry from inside the project:"));
+    console.log("    " + chalk.cyan(`$ cd ${projectName}`));
+    console.log("    " + chalk.cyan(`$ ${pm === "npm" ? "npm install" : `${pm} install`}`));
+    console.log();
+    process.exit(1);
+  }
+  if (e2e === "playwright") {
+    spinner.start("Installing Playwright browsers (chromium)...");
     try {
-      await npmInstall(projectDir, spinner2);
-      spinner2.succeed(chalk.green("Dependencies installed"));
+      await installPlaywrightBrowsers(projectDir);
+      spinner.succeed(chalk.green("Playwright browsers installed"));
     } catch {
-      spinner2.warn(chalk.yellow("npm install failed \u2014 run it manually inside the project"));
-    }
-    spinner2.start("Initializing git repository...");
-    try {
-      execSync("git init", { cwd: projectDir, stdio: "pipe" });
-      spinner2.text = "Installing git hooks (husky)...";
-      execSync("npm run prepare", { cwd: projectDir, stdio: "pipe" });
-      spinner2.succeed(chalk.green("Git initialized + hooks installed"));
-    } catch {
-      spinner2.warn(
-        chalk.yellow('Git setup skipped \u2014 run "git init && npm run prepare" manually')
-      );
+      spinner.warn(chalk.yellow('Playwright browser install failed \u2014 run "npx playwright install chromium" manually'));
     }
   }
-  const nextStep = skipInstall2 ? [`cd ${projectName}`, "npm install", "npm run dev"] : [`cd ${projectName}`, "npm run dev"];
+  spinner.start("Initializing git repository...");
+  try {
+    execSync("git init", { cwd: projectDir, stdio: "pipe" });
+    spinner.text = "Installing git hooks (husky)...";
+    const [bin, ...args] = PM_RUN[pm]("prepare");
+    execSync(`${bin} ${args.join(" ")}`, { cwd: projectDir, stdio: "pipe" });
+    spinner.succeed(chalk.green("Git initialized + hooks installed"));
+  } catch {
+    spinner.warn(
+      chalk.yellow('Git setup skipped \u2014 run "git init && npm run prepare" manually')
+    );
+  }
+  printDone(projectName, pm, stateManagement, e2e, conventionalCommits, false);
+}
+function printDone(projectName, pm, stateManagement, e2e, conventionalCommits, skipInstall) {
+  const stateLabel = stateManagement === "none" ? "none" : stateManagement === "jotai" ? "Jotai" : "Zustand";
+  const e2eLabel = e2e === "playwright" ? "Playwright" : e2e === "cypress" ? "Cypress" : "none";
+  const devCmd = pm === "npm" ? "npm run dev" : `${pm} dev`;
+  const installCmd = pm === "npm" ? "npm install" : `${pm} install`;
+  const nextSteps = skipInstall ? [`cd ${projectName}`, installCmd, devCmd] : [`cd ${projectName}`, devCmd];
   console.log();
   console.log(
     "  " + chalk.bold.green("\u2713 Ready!") + "  " + chalk.dim(`${projectName} is scaffolded.`)
   );
   console.log();
-  console.log("  " + chalk.dim("Stack:  ") + chalk.white("Next.js 15 \xB7 TypeScript \xB7 Tailwind CSS v4 \xB7 Zustand"));
+  console.log("  " + chalk.dim("Stack:  ") + chalk.white("Next.js 15 \xB7 TypeScript \xB7 Tailwind CSS v4 \xB7 " + stateLabel));
   console.log("  " + chalk.dim("Design: ") + chalk.white("Atomic Design (atoms \u2192 molecules \u2192 organisms)"));
-  console.log("  " + chalk.dim("DX:     ") + chalk.white("ESLint \xB7 Prettier \xB7 Husky \xB7 Commitlint \xB7 Jest"));
+  const dxParts = ["ESLint", "Prettier", "Jest"];
+  if (conventionalCommits) dxParts.push("Husky", "Commitlint");
+  if (e2e !== "none") dxParts.push(e2eLabel);
+  console.log("  " + chalk.dim("DX:     ") + chalk.white(dxParts.join(" \xB7 ")));
+  console.log("  " + chalk.dim("PM:     ") + chalk.white(pm));
   console.log();
   console.log("  " + chalk.dim("Next steps:"));
-  for (const step of nextStep) {
+  for (const step of nextSteps) {
     console.log("    " + chalk.cyan("$ " + step));
   }
   console.log();
@@ -2990,34 +3270,125 @@ async function createProject(projectName, { skipInstall: skipInstall2, spinner: 
 
 // src/index.ts
 var [, , rawName, ...flags] = process.argv;
+function validateName(v) {
+  if (!v) return "Project name is required.";
+  if (!/^[a-z0-9][a-z0-9-_]*$/i.test(v))
+    return "Must start with a letter/digit and contain only letters, numbers, hyphens, or underscores.";
+}
 function printUsage() {
   console.log();
-  console.log(chalk2.bold("  create-atom-stack") + chalk2.dim(" <project-name> [options]"));
+  console.log(chalk2.bold("  create-atom-stack") + chalk2.dim(" [project-name] [options]"));
   console.log();
   console.log(chalk2.dim("  Options:"));
-  console.log(chalk2.dim("    --skip-install   Skip npm install"));
+  console.log(chalk2.dim("    --pm=<npm|pnpm|yarn|bun>              Package manager (default: npm)"));
+  console.log(chalk2.dim("    --state=<zustand|jotai|none>          State management (default: zustand)"));
+  console.log(chalk2.dim("    --e2e=<playwright|cypress|none>       E2E framework (default: none)"));
+  console.log(chalk2.dim("    --skip-install                        Skip dependency install"));
+  console.log(chalk2.dim("    --help                                Show this help"));
   console.log();
-  console.log(chalk2.dim("  Example:"));
+  console.log(chalk2.dim("  Examples:"));
+  console.log("    npx create-atom-stack                " + chalk2.dim("(interactive)"));
   console.log("    npx create-atom-stack my-app");
+  console.log("    npx create-atom-stack my-app --pm=pnpm --state=jotai --e2e=playwright");
   console.log();
 }
-if (!rawName || rawName.startsWith("-")) {
-  console.error(chalk2.red("\n  Error: Project name is required.\n"));
-  printUsage();
-  process.exit(1);
+async function main() {
+  let projectName;
+  let pm;
+  let stateManagement;
+  let e2e;
+  let conventionalCommits;
+  let skipInstall;
+  if (flags.includes("--help") || rawName === "--help") {
+    printUsage();
+    process.exit(0);
+  }
+  const hasDirectName = rawName && !rawName.startsWith("-");
+  const isTTY = Boolean(process.stdin.isTTY);
+  if (!hasDirectName && !isTTY) {
+    console.error(chalk2.red("\n  Error: Project name is required in non-interactive mode.\n"));
+    printUsage();
+    process.exit(1);
+  }
+  if (hasDirectName) {
+    const nameError = validateName(rawName);
+    if (nameError) {
+      console.error(chalk2.red(`
+  Error: ${nameError}
+`));
+      process.exit(1);
+    }
+    projectName = rawName;
+    pm = flags.find((f) => f.startsWith("--pm="))?.split("=")[1] ?? "npm";
+    stateManagement = flags.find((f) => f.startsWith("--state="))?.split("=")[1] ?? "zustand";
+    e2e = flags.find((f) => f.startsWith("--e2e="))?.split("=")[1] ?? "none";
+    conventionalCommits = !flags.includes("--no-conventional-commits");
+    skipInstall = flags.includes("--skip-install");
+  } else {
+    console.log();
+    p.intro(chalk2.bold.cyan("create-atom-stack") + chalk2.dim("  Atomic Next.js scaffold"));
+    const answers = await p.group(
+      {
+        projectName: () => p.text({
+          message: "Project name?",
+          placeholder: "my-app",
+          validate: validateName
+        }),
+        pm: () => p.select({
+          message: "Package manager?",
+          options: [
+            { value: "npm", label: "npm" },
+            { value: "pnpm", label: "pnpm" },
+            { value: "yarn", label: "yarn" },
+            { value: "bun", label: "bun" }
+          ]
+        }),
+        stateManagement: () => p.select({
+          message: "State management?",
+          options: [
+            { value: "zustand", label: "Zustand", hint: "recommended" },
+            { value: "jotai", label: "Jotai" },
+            { value: "none", label: "none" }
+          ]
+        }),
+        e2e: () => p.select({
+          message: "E2E testing?",
+          options: [
+            { value: "none", label: "none" },
+            { value: "playwright", label: "Playwright", hint: "recommended" },
+            { value: "cypress", label: "Cypress" }
+          ]
+        }),
+        conventionalCommits: () => p.confirm({
+          message: "Conventional commits? (husky + commitlint)",
+          initialValue: true
+        }),
+        skipInstall: () => p.confirm({
+          message: "Skip install?",
+          initialValue: false
+        })
+      },
+      {
+        onCancel: () => {
+          p.cancel("Cancelled.");
+          process.exit(0);
+        }
+      }
+    );
+    projectName = answers.projectName;
+    pm = answers.pm;
+    stateManagement = answers.stateManagement;
+    e2e = answers.e2e;
+    conventionalCommits = answers.conventionalCommits;
+    skipInstall = answers.skipInstall;
+    p.outro(chalk2.dim("Scaffolding\u2026"));
+    console.log();
+  }
+  const spinner = ora({ prefixText: "  " }).start("Scaffolding project...");
+  createProject(projectName, { skipInstall, pm, stateManagement, e2e, conventionalCommits, spinner }).catch((err) => {
+    spinner.fail(chalk2.red("Failed: " + err.message));
+    console.log();
+    process.exit(1);
+  });
 }
-if (!/^[a-z0-9][a-z0-9-_]*$/i.test(rawName)) {
-  console.error(chalk2.red("\n  Error: Project name must start with a letter/digit and contain only letters, numbers, hyphens, and underscores.\n"));
-  process.exit(1);
-}
-var skipInstall = flags.includes("--skip-install");
-console.log();
-console.log("  " + chalk2.bold.cyan("create-atom-stack"));
-console.log("  " + chalk2.dim("Atomic Next.js scaffold"));
-console.log();
-var spinner = ora({ prefixText: "  " }).start("Scaffolding project...");
-createProject(rawName, { skipInstall, spinner }).catch((err) => {
-  spinner.fail(chalk2.red("Failed: " + err.message));
-  console.log();
-  process.exit(1);
-});
+main();
