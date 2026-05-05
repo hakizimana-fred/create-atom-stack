@@ -18,50 +18,44 @@ No boilerplate hunting. No config copy-pasting. Just run and build.
 
 ## Quick Start
 
+Three ways to scaffold — pick what fits your workflow:
+
+**Fully interactive** — the CLI asks your name, package manager, state library, and E2E framework:
+
+```bash
+npx create-atom-stack
+```
+
+**Zero-config** — pass a name and get a project in seconds using smart defaults (npm · Zustand · no E2E):
+
 ```bash
 npx create-atom-stack my-app
 ```
 
-The interactive CLI will guide you through selecting your preferred package manager and end-to-end testing framework, then scaffold and install everything.
-
----
-
-## Package Manager Support
-
-create-atom-stack supports all major JavaScript package managers. You can pick your preferred one during the interactive setup:
-
-```
-? Which package manager would you like to use?
-  pnpm
-  npm
-  yarn
-  bun
-```
-
-Or run it non-interactively by responding to the prompts:
+**Explicit flags** — non-interactive with full control, great for scripts and CI:
 
 ```bash
-npx create-atom-stack my-app
-# Then select pnpm / npm / yarn / bun when prompted
+npx create-atom-stack my-app --pm=pnpm --state=jotai --e2e=playwright
 ```
 
-After scaffolding:
+Then start developing:
 
 ```bash
 cd my-app
-# Start the dev server with your chosen package manager, e.g.:
-pnpm dev
-# or
-npm run dev
+pnpm dev   # or: npm run dev / yarn dev / bun dev
 ```
 
 ---
 
 ## Options
 
-| Flag | Description |
-|---|---|
-| `--skip-install` | Skip dependency installation (scaffolds files only) |
+| Flag | Default | Description |
+|---|---|---|
+| `--pm=<npm\|pnpm\|yarn\|bun>` | `npm` | Package manager |
+| `--state=<zustand\|jotai\|none>` | `zustand` | State management library |
+| `--e2e=<playwright\|cypress\|none>` | `none` | End-to-end testing framework |
+| `--no-conventional-commits` | — | Skip Husky + Commitlint setup |
+| `--skip-install` | — | Scaffold files only, skip `install` |
 
 ---
 

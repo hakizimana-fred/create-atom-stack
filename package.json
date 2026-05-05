@@ -1,6 +1,6 @@
 {
   "name": "create-atom-stack",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Scaffold a production-ready Next.js App Router project with atomic design, Zustand, Tailwind CSS v4, and Conventional Commits.",
   "type": "module",
   "bin": {
@@ -11,9 +11,14 @@
     "dev": "tsup src/index.ts --format esm --out-dir dist --watch --target node18",
     "start": "node dist/index.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hakizimana-fred/create-atom-stack.git"
+  },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "atomstack.png"
   ],
   "keywords": [
     "nextjs",
