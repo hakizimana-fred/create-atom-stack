@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 // src/index.ts
-import * as p from "@clack/prompts";
-import chalk2 from "chalk";
+import * as p3 from "@clack/prompts";
+import chalk5 from "chalk";
 import ora from "ora";
 
 // src/create.ts
@@ -15,7 +15,11 @@ import chalk from "chalk";
 function packageJsonTemplate(name, opts) {
   const expectedPackageManager = opts.pm;
   const packageManagerCheck = `node -e "const ua=process.env.npm_config_user_agent||''; const pm='` + expectedPackageManager + "/'; if (!ua.startsWith(pm)) { console.error('Use " + expectedPackageManager + ` to install dependencies.'); process.exit(1); }"`;
-  const stateDep = opts.stateManagement === "zustand" ? { zustand: "^5.0.11" } : opts.stateManagement === "jotai" ? { jotai: "^2.11.3" } : {};
+  const stateDep = opts.stateManagement === "zustand" ? { zustand: "^5.0.11" } : opts.stateManagement === "jotai" ? { jotai: "^2.11.3" } : opts.stateManagement === "react-query" ? { "@tanstack/react-query": "^5.80.2" } : {};
+  const advancedDeps = {
+    ...opts.advancedAddons.includes("rxjs") ? { rxjs: "^7.8.2" } : {},
+    ...opts.advancedAddons.includes("xstate") ? { xstate: "^5.19.4", "@xstate/react": "^4.1.3" } : {}
+  };
   const e2eDep = opts.e2e === "playwright" ? { "@playwright/test": "^1.52.0" } : opts.e2e === "cypress" ? { cypress: "^13.17.0" } : {};
   const e2eScripts = opts.e2e === "playwright" ? {
     "test:e2e": "playwright test",
@@ -54,7 +58,8 @@ function packageJsonTemplate(name, opts) {
         next: "15.3.8",
         react: "19.1.0",
         "react-dom": "19.1.0",
-        ...stateDep
+        ...stateDep,
+        ...advancedDeps
       },
       devDependencies: {
         ...opts.conventionalCommits ? {
@@ -86,6 +91,61 @@ function packageJsonTemplate(name, opts) {
     2
   );
 }
+
+// src/templates/advanced.ts
+var rxCounterService = `import { BehaviorSubject, map } from 'rxjs';
+
+const _count$ = new BehaviorSubject(0);
+
+export const count$ = _count$.asObservable();
+export const doubled$ = count$.pipe(map((n) => n * 2));
+
+export const counterService = {
+  increment: () => _count$.next(_count$.getValue() + 1),
+  decrement: () => _count$.next(_count$.getValue() - 1),
+  reset:     () => _count$.next(0),
+};
+`;
+var useObservable = `'use client';
+
+import { useEffect, useState } from 'react';
+import type { Observable } from 'rxjs';
+
+export function useObservable<T>(observable: Observable<T>, initialValue: T): T {
+  const [value, setValue] = useState<T>(initialValue);
+
+  useEffect(() => {
+    const sub = observable.subscribe(setValue);
+    return () => sub.unsubscribe();
+  }, [observable]);
+
+  return value;
+}
+`;
+var toggleMachineTemplate = `import { createMachine } from 'xstate';
+
+export const toggleMachine = createMachine({
+  id: 'toggle',
+  initial: 'off',
+  states: {
+    off: { on: { TOGGLE: 'on'  } },
+    on:  { on: { TOGGLE: 'off' } },
+  },
+});
+`;
+var useToggleMachine = `'use client';
+
+import { useMachine } from '@xstate/react';
+import { toggleMachine } from '@/lib/machines/toggle.machine';
+
+export function useToggleMachine() {
+  const [state, send] = useMachine(toggleMachine);
+  return {
+    isOn:   state.matches('on'),
+    toggle: () => send({ type: 'TOGGLE' }),
+  };
+}
+`;
 
 // src/templates/root-configs.ts
 var tsconfigJson = JSON.stringify(
@@ -887,11 +947,14 @@ html {
 `;
 
 // src/templates/app-files.ts
-function rootLayout(projectName) {
+function rootLayout(projectName, withQueryProvider = false) {
   const title = projectName.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const providerImport = withQueryProvider ? `
+import { Providers } from '@/lib/providers';` : "";
+  const bodyContent = withQueryProvider ? `        <Providers>{children}</Providers>` : `        {children}`;
   return `import type { Metadata } from 'next';
 import { GeistSans } from 'geist/font/sans';
-import { GeistMono } from 'geist/font/mono';
+import { GeistMono } from 'geist/font/mono';${providerImport}
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -911,7 +974,7 @@ export default function RootLayout({
           'antialiased font-sans text-base text-txt-primary bg-surface-page min-h-dvh',
         ].join(' ')}
       >
-        {children}
+${bodyContent}
       </body>
     </html>
   );
@@ -2445,6 +2508,42 @@ export const api = {
     request<T>(path, { method: 'DELETE', ...opts }),
 };
 `;
+var reactQueryProviders = `'use client';
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useState } from 'react';
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: { staleTime: 60_000, retry: 1 },
+        },
+      }),
+  );
+
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
+`;
+var usePostsQuery = `import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api/client';
+
+interface Post {
+  id: number;
+  title: string;
+  body: string;
+}
+
+export function usePosts() {
+  return useQuery<Post[]>({
+    queryKey: ['posts'],
+    queryFn:  () => api.get<Post[]>('/posts'),
+  });
+}
+`;
 var useScrollState = `'use client';
 
 import { useEffect, useState } from 'react';
@@ -2961,6 +3060,8 @@ test.describe('Docs page', () => {
 // src/templates/index.ts
 function getFileMap(projectName, opts) {
   const storeFile = opts.stateManagement === "zustand" ? uiStore : opts.stateManagement === "jotai" ? jotaiStore : null;
+  const withRxjs = opts.advancedAddons.includes("rxjs");
+  const withXstate = opts.advancedAddons.includes("xstate");
   return {
     /* ── Root config files ─────────────────────────────────────────────── */
     "package.json": packageJsonTemplate(projectName, opts),
@@ -3005,7 +3106,7 @@ function getFileMap(projectName, opts) {
     ".vscode/extensions.json": vsCodeExtensions,
     /* ── App ───────────────────────────────────────────────────────────── */
     "src/app/globals.css": globalsCss,
-    "src/app/layout.tsx": rootLayout(projectName),
+    "src/app/layout.tsx": rootLayout(projectName, opts.stateManagement === "react-query"),
     "src/app/page.tsx": rootPage,
     "src/app/docs/page.tsx": docsPage,
     /* ── Atoms ─────────────────────────────────────────────────────────── */
@@ -3028,8 +3129,12 @@ function getFileMap(projectName, opts) {
     "src/design-system/tokens/spacing.ts": spacingToken,
     "src/design-system/tokens/radius.ts": radiusToken,
     "src/design-system/tokens/shadows.ts": shadowsToken,
-    /* ── Store ─────────────────────────────────────────────────────────── */
+    /* ── Store / server-state ─────────────────────────────────────────── */
     ...storeFile ? { "src/store/ui.store.ts": storeFile } : {},
+    ...opts.stateManagement === "react-query" ? {
+      "src/lib/providers.tsx": reactQueryProviders,
+      "src/hooks/use-posts.ts": usePostsQuery
+    } : {},
     /* ── Types ─────────────────────────────────────────────────────────── */
     "src/types/common.ts": commonTypes,
     "src/types/index.ts": typesIndex,
@@ -3039,6 +3144,15 @@ function getFileMap(projectName, opts) {
     "src/lib/api/client.ts": apiClient,
     /* ── Hooks ─────────────────────────────────────────────────────────── */
     "src/hooks/use-scroll-state.ts": useScrollState,
+    ...withRxjs ? { "src/hooks/use-observable.ts": useObservable } : {},
+    ...withXstate ? { "src/hooks/use-toggle-machine.ts": useToggleMachine } : {},
+    /* ── Advanced add-ons ─────────────────────────────────────────────── */
+    ...withRxjs ? {
+      "src/lib/rx/counter.service.ts": rxCounterService
+    } : {},
+    ...withXstate ? {
+      "src/lib/machines/toggle.machine.ts": toggleMachineTemplate
+    } : {},
     /* ── Data ──────────────────────────────────────────────────────────── */
     "src/data/constants/navigation.ts": navigationConstants,
     /* ── E2E tests ─────────────────────────────────────────────────────── */
@@ -3114,14 +3228,14 @@ function runInstall(pm, cwd, spinner) {
     const errorLines = [];
     let lastPkgUpdate = 0;
     const onChunk = (chunk) => {
-      const text2 = chunk.toString();
+      const text3 = chunk.toString();
       const now = Date.now();
-      for (const line of text2.split("\n")) {
+      for (const line of text3.split("\n")) {
         if (/ERR_|error|Error/i.test(line) && line.trim()) {
           errorLines.push(line.trim());
         }
       }
-      const summary = text2.match(PM_SUMMARY_RE[pm]);
+      const summary = text3.match(PM_SUMMARY_RE[pm]);
       if (summary) {
         clearInterval(phaseTick);
         const count = summary[1] ?? "";
@@ -3130,7 +3244,7 @@ function runInstall(pm, cwd, spinner) {
       }
       if (pm === "npm") {
         if (now - lastPkgUpdate < 400) return;
-        const pkg = text2.match(/reify:(@?[a-z][a-z0-9._-]*(?:\/[a-z0-9._-]+)?)/i);
+        const pkg = text3.match(/reify:(@?[a-z][a-z0-9._-]*(?:\/[a-z0-9._-]+)?)/i);
         if (pkg) {
           lastPkgUpdate = now;
           spinner.text = chalk.dim("\u21B3 ") + chalk.white(pkg[1]) + elapsed();
@@ -3165,7 +3279,7 @@ function installPlaywrightBrowsers(cwd) {
     child.on("error", reject);
   });
 }
-async function createProject(projectName, { skipInstall, pm, stateManagement, e2e, conventionalCommits, spinner }) {
+async function createProject(projectName, { skipInstall, noGit, pm, stateManagement, e2e, conventionalCommits, advancedAddons, spinner }) {
   const projectDir = path.resolve(process.cwd(), projectName);
   if (fs.existsSync(projectDir)) {
     throw new Error(
@@ -3174,7 +3288,7 @@ async function createProject(projectName, { skipInstall, pm, stateManagement, e2
   }
   spinner.text = "Creating project directory...";
   fs.mkdirSync(projectDir, { recursive: true });
-  const fileMap = getFileMap(projectName, { pm, stateManagement, e2e, conventionalCommits });
+  const fileMap = getFileMap(projectName, { pm, stateManagement, e2e, conventionalCommits, advancedAddons });
   const entries = Object.entries(fileMap);
   const total = entries.length;
   let written = 0;
@@ -3191,63 +3305,68 @@ async function createProject(projectName, { skipInstall, pm, stateManagement, e2
     if (fs.existsSync(hookPath)) fs.chmodSync(hookPath, 493);
   }
   spinner.succeed(chalk.green(`${written} files written`));
-  if (skipInstall) {
-    printDone(projectName, pm, stateManagement, e2e, conventionalCommits, true);
-    return;
-  }
-  if (!isPMAvailable(pm)) {
-    spinner.warn(
-      chalk.yellow(
-        `"${pm}" is not installed or not in PATH. Install it first: https://` + (pm === "pnpm" ? "pnpm.io/installation" : pm === "yarn" ? "yarnpkg.com/getting-started/install" : "bun.sh/docs/installation")
-      )
-    );
-    printDone(projectName, pm, stateManagement, e2e, conventionalCommits, true);
-    return;
-  }
-  spinner.start(INSTALL_PHASES[0]);
-  try {
-    await runInstall(pm, projectDir, spinner);
-    spinner.succeed(chalk.green("Dependencies installed"));
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    spinner.fail(chalk.red(`${pm} install failed`));
-    console.log();
-    console.log("  " + chalk.yellow("\u26A0 Install error:") + chalk.dim(" " + msg));
-    console.log("  " + chalk.dim("Retry from inside the project:"));
-    console.log("    " + chalk.cyan(`$ cd ${projectName}`));
-    console.log("    " + chalk.cyan(`$ ${pm === "npm" ? "npm install" : `${pm} install`}`));
-    console.log();
-    process.exit(1);
-  }
-  if (e2e === "playwright") {
-    spinner.start("Installing Playwright browsers (chromium)...");
-    try {
-      await installPlaywrightBrowsers(projectDir);
-      spinner.succeed(chalk.green("Playwright browsers installed"));
-    } catch {
-      spinner.warn(chalk.yellow('Playwright browser install failed \u2014 run "npx playwright install chromium" manually'));
+  if (!skipInstall) {
+    if (!isPMAvailable(pm)) {
+      spinner.warn(
+        chalk.yellow(
+          `"${pm}" is not installed or not in PATH. Install it first: https://` + (pm === "pnpm" ? "pnpm.io/installation" : pm === "yarn" ? "yarnpkg.com/getting-started/install" : "bun.sh/docs/installation")
+        )
+      );
+    } else {
+      spinner.start(INSTALL_PHASES[0]);
+      try {
+        await runInstall(pm, projectDir, spinner);
+        spinner.succeed(chalk.green("Dependencies installed"));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        spinner.fail(chalk.red(`${pm} install failed`));
+        console.log();
+        console.log("  " + chalk.yellow("\u26A0 Install error:") + chalk.dim(" " + msg));
+        console.log("  " + chalk.dim("Retry from inside the project:"));
+        console.log("    " + chalk.cyan(`$ cd ${projectName}`));
+        console.log("    " + chalk.cyan(`$ ${pm === "npm" ? "npm install" : `${pm} install`}`));
+        console.log();
+        process.exit(1);
+      }
+      if (e2e === "playwright") {
+        spinner.start("Installing Playwright browsers (chromium)...");
+        try {
+          await installPlaywrightBrowsers(projectDir);
+          spinner.succeed(chalk.green("Playwright browsers installed"));
+        } catch {
+          spinner.warn(chalk.yellow('Playwright browser install failed \u2014 run "npx playwright install chromium" manually'));
+        }
+      }
     }
   }
-  spinner.start("Initializing git repository...");
-  try {
-    execSync("git init", { cwd: projectDir, stdio: "pipe" });
-    spinner.text = "Installing git hooks (husky)...";
-    const [bin, ...args] = PM_RUN[pm]("prepare");
-    execSync(`${bin} ${args.join(" ")}`, { cwd: projectDir, stdio: "pipe" });
-    spinner.succeed(chalk.green("Git initialized + hooks installed"));
-  } catch {
-    spinner.warn(
-      chalk.yellow('Git setup skipped \u2014 run "git init && npm run prepare" manually')
-    );
+  if (!noGit) {
+    spinner.start("Initializing git repository...");
+    try {
+      execSync("git init", { cwd: projectDir, stdio: "pipe" });
+      if (!skipInstall && conventionalCommits) {
+        spinner.text = "Installing git hooks (husky)...";
+        const [bin, ...args] = PM_RUN[pm]("prepare");
+        execSync(`${bin} ${args.join(" ")}`, { cwd: projectDir, stdio: "pipe" });
+        spinner.succeed(chalk.green("Git initialized + hooks installed"));
+      } else {
+        spinner.succeed(chalk.green("Git initialized"));
+      }
+    } catch {
+      spinner.warn(chalk.yellow('Git setup skipped \u2014 run "git init" manually'));
+    }
   }
-  printDone(projectName, pm, stateManagement, e2e, conventionalCommits, false);
+  printDone(projectName, pm, stateManagement, e2e, conventionalCommits, advancedAddons, noGit, skipInstall);
 }
-function printDone(projectName, pm, stateManagement, e2e, conventionalCommits, skipInstall) {
-  const stateLabel = stateManagement === "none" ? "none" : stateManagement === "jotai" ? "Jotai" : "Zustand";
+function printDone(projectName, pm, stateManagement, e2e, conventionalCommits, advancedAddons, noGit, skipInstall) {
+  const stateLabel = stateManagement === "react-query" ? "TanStack Query" : stateManagement === "jotai" ? "Jotai" : stateManagement === "zustand" ? "Zustand" : "none";
   const e2eLabel = e2e === "playwright" ? "Playwright" : e2e === "cypress" ? "Cypress" : "none";
   const devCmd = pm === "npm" ? "npm run dev" : `${pm} dev`;
   const installCmd = pm === "npm" ? "npm install" : `${pm} install`;
-  const nextSteps = skipInstall ? [`cd ${projectName}`, installCmd, devCmd] : [`cd ${projectName}`, devCmd];
+  const nextSteps = [
+    `cd ${projectName}`,
+    ...skipInstall ? [installCmd] : [],
+    devCmd
+  ];
   console.log();
   console.log(
     "  " + chalk.bold.green("\u2713 Ready!") + "  " + chalk.dim(`${projectName} is scaffolded.`)
@@ -3259,12 +3378,676 @@ function printDone(projectName, pm, stateManagement, e2e, conventionalCommits, s
   if (conventionalCommits) dxParts.push("Husky", "Commitlint");
   if (e2e !== "none") dxParts.push(e2eLabel);
   console.log("  " + chalk.dim("DX:     ") + chalk.white(dxParts.join(" \xB7 ")));
+  if (advancedAddons.length > 0) {
+    const addonLabels = advancedAddons.map((a) => a === "rxjs" ? "RxJS" : "XState");
+    console.log("  " + chalk.dim("Addons: ") + chalk.white(addonLabels.join(" \xB7 ")));
+  }
   console.log("  " + chalk.dim("PM:     ") + chalk.white(pm));
+  if (noGit) console.log("  " + chalk.dim("Git:    ") + chalk.yellow("skipped (--no-git)"));
   console.log();
   console.log("  " + chalk.dim("Next steps:"));
   for (const step of nextSteps) {
     console.log("    " + chalk.cyan("$ " + step));
   }
+  console.log();
+}
+
+// src/commands/add.ts
+import path9 from "path";
+import * as p2 from "@clack/prompts";
+import chalk4 from "chalk";
+
+// src/generators/component/index.ts
+import path2 from "path";
+
+// src/generator-templates/component.ts
+function componentTsx(pascal) {
+  return `import type { FC } from 'react';
+import { cn } from '@/lib/utils/cn';
+import { ${pascal}Styles } from './${pascal}.styles';
+
+export interface ${pascal}Props {
+  children?: React.ReactNode;
+  className?: string;
+  variant?: 'primary' | 'secondary' | 'ghost';
+  size?: 'sm' | 'md' | 'lg';
+  disabled?: boolean;
+  onClick?: () => void;
+}
+
+const ${pascal}: FC<${pascal}Props> = ({
+  children,
+  className,
+  variant = 'primary',
+  size = 'md',
+  disabled = false,
+  onClick,
+}) => {
+  return (
+    <button
+      type="button"
+      className={cn(${pascal}Styles.base, ${pascal}Styles[variant], ${pascal}Styles[size], className)}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  );
+};
+
+export default ${pascal};
+`;
+}
+function componentStylesTs(pascal) {
+  return `export const ${pascal}Styles = {
+  base: 'inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
+  primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
+  secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+  ghost: 'hover:bg-accent hover:text-accent-foreground',
+  sm: 'h-8 px-3 text-xs',
+  md: 'h-10 px-4 py-2 text-sm',
+  lg: 'h-11 px-8 text-base',
+} as const;
+`;
+}
+function componentTestTsx(pascal) {
+  return `import { render, screen, fireEvent } from '@testing-library/react';
+import ${pascal} from './${pascal}';
+
+describe('${pascal}', () => {
+  it('renders children', () => {
+    render(<${pascal}>Click me</${pascal}>);
+    expect(screen.getByRole('button')).toHaveTextContent('Click me');
+  });
+
+  it('calls onClick when clicked', () => {
+    const handleClick = jest.fn();
+    render(<${pascal} onClick={handleClick}>Click</${pascal}>);
+    fireEvent.click(screen.getByRole('button'));
+    expect(handleClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not trigger onClick when disabled', () => {
+    const handleClick = jest.fn();
+    render(<${pascal} onClick={handleClick} disabled>Click</${pascal}>);
+    expect(screen.getByRole('button')).toBeDisabled();
+  });
+
+  it('applies variant classes', () => {
+    const { container } = render(<${pascal} variant="secondary">Content</${pascal}>);
+    expect(container.firstChild).toHaveClass('bg-secondary');
+  });
+});
+`;
+}
+function componentIndexTs(pascal) {
+  return `export { default } from './${pascal}';
+export type { ${pascal}Props } from './${pascal}';
+`;
+}
+
+// src/generators/component/index.ts
+var componentGenerator = {
+  type: "component",
+  defaultBaseDir: "src/components",
+  generate(ctx) {
+    const { pascalName, outDir } = ctx;
+    const cwd = process.cwd();
+    const files = [
+      [`${pascalName}.tsx`, componentTsx(pascalName)],
+      [`${pascalName}.styles.ts`, componentStylesTs(pascalName)],
+      [`${pascalName}.test.tsx`, componentTestTsx(pascalName)],
+      ["index.ts", componentIndexTs(pascalName)]
+    ];
+    return files.map(([name, content]) => {
+      const fullPath = path2.join(outDir, name);
+      return { fullPath, relativePath: path2.relative(cwd, fullPath), content };
+    });
+  }
+};
+var component_default = componentGenerator;
+
+// src/generators/page/index.ts
+import path3 from "path";
+
+// src/generator-templates/page.ts
+function pageTsx(pascal, routeSegment) {
+  const title = routeSegment.split("/").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(" ");
+  return `import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: '${title}',
+};
+
+export default function ${pascal}Page() {
+  return (
+    <main className="container mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold tracking-tight">${title}</h1>
+      <p className="mt-2 text-muted-foreground">
+        Start building your ${title.toLowerCase()} page here.
+      </p>
+    </main>
+  );
+}
+`;
+}
+function loadingTsx(pascal) {
+  return `export default function ${pascal}Loading() {
+  return (
+    <div className="flex items-center justify-center min-h-[400px]" aria-label="Loading">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-muted border-t-primary" />
+    </div>
+  );
+}
+`;
+}
+function pageIndexTs(pascal) {
+  return `export { default as ${pascal}Page } from './page';
+`;
+}
+
+// src/generators/page/index.ts
+var pageGenerator = {
+  type: "page",
+  defaultBaseDir: "src/app",
+  generate(ctx) {
+    const { pascalName, rawName: rawName2, outDir } = ctx;
+    const cwd = process.cwd();
+    const files = [
+      ["page.tsx", pageTsx(pascalName, rawName2)],
+      ["loading.tsx", loadingTsx(pascalName)],
+      ["index.ts", pageIndexTs(pascalName)]
+    ];
+    return files.map(([name, content]) => {
+      const fullPath = path3.join(outDir, name);
+      return { fullPath, relativePath: path3.relative(cwd, fullPath), content };
+    });
+  }
+};
+var page_default = pageGenerator;
+
+// src/generators/feature/index.ts
+import path4 from "path";
+
+// src/generator-templates/feature.ts
+function featureIndexTs(pascal) {
+  return `// ${pascal} feature \u2014 public API
+// Export only what consumers outside this feature need.
+export * from './types';
+`;
+}
+function featureTypesIndexTs(pascal) {
+  return `export interface ${pascal}Entity {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ${pascal}State {
+  isLoading: boolean;
+  error: string | null;
+}
+`;
+}
+function featureBarrelTs(dirName) {
+  return `// ${dirName} \u2014 add exports here
+`;
+}
+
+// src/generators/feature/index.ts
+var SUBDIRS = ["components", "hooks", "services", "store", "utils"];
+var featureGenerator = {
+  type: "feature",
+  defaultBaseDir: "src/features",
+  generate(ctx) {
+    const { pascalName, outDir } = ctx;
+    const cwd = process.cwd();
+    const files = [];
+    const add = (rel, content) => {
+      const fullPath = path4.join(outDir, rel);
+      files.push({ fullPath, relativePath: path4.relative(cwd, fullPath), content });
+    };
+    add("index.ts", featureIndexTs(pascalName));
+    add("types/index.ts", featureTypesIndexTs(pascalName));
+    for (const dir of SUBDIRS) {
+      add(`${dir}/index.ts`, featureBarrelTs(dir));
+    }
+    return files;
+  }
+};
+var feature_default = featureGenerator;
+
+// src/generators/store/index.ts
+import path5 from "path";
+
+// src/generator-templates/store.ts
+function storeTs(camel, pascal) {
+  return `import { create } from 'zustand';
+import { devtools, persist } from 'zustand/middleware';
+import type { ${pascal}State, ${pascal}Actions } from './${camel}.types';
+
+type ${pascal}Store = ${pascal}State & ${pascal}Actions;
+
+const initialState: ${pascal}State = {
+  isLoading: false,
+  error: null,
+};
+
+export const use${pascal}Store = create<${pascal}Store>()(
+  devtools(
+    persist(
+      (set) => ({
+        ...initialState,
+
+        setLoading: (isLoading) =>
+          set({ isLoading }, false, '${camel}/setLoading'),
+
+        setError: (error) =>
+          set({ error }, false, '${camel}/setError'),
+
+        reset: () =>
+          set(initialState, false, '${camel}/reset'),
+      }),
+      { name: '${camel}-store' },
+    ),
+    { name: '${pascal}Store' },
+  ),
+);
+`;
+}
+function storeTypesTs(pascal) {
+  return `export interface ${pascal}State {
+  isLoading: boolean;
+  error: string | null;
+}
+
+export interface ${pascal}Actions {
+  setLoading: (isLoading: boolean) => void;
+  setError: (error: string | null) => void;
+  reset: () => void;
+}
+`;
+}
+function storeIndexTs(camel, pascal) {
+  return `export { use${pascal}Store } from './${camel}.store';
+export type { ${pascal}State, ${pascal}Actions } from './${camel}.types';
+`;
+}
+
+// src/generators/store/index.ts
+var storeGenerator = {
+  type: "store",
+  defaultBaseDir: "src/store",
+  generate(ctx) {
+    const { camelName, pascalName, outDir } = ctx;
+    const cwd = process.cwd();
+    const files = [
+      [`${camelName}.store.ts`, storeTs(camelName, pascalName)],
+      [`${camelName}.types.ts`, storeTypesTs(pascalName)],
+      ["index.ts", storeIndexTs(camelName, pascalName)]
+    ];
+    return files.map(([name, content]) => {
+      const fullPath = path5.join(outDir, name);
+      return { fullPath, relativePath: path5.relative(cwd, fullPath), content };
+    });
+  }
+};
+var store_default = storeGenerator;
+
+// src/generators/api/index.ts
+import path6 from "path";
+
+// src/generator-templates/api.ts
+function apiTs(camel, pascal) {
+  return `import type { ${pascal}, Create${pascal}Dto, Update${pascal}Dto } from './${camel}.types';
+
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? '/api';
+
+async function req<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(\`\${BASE}\${url}\`, {
+    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    ...init,
+  });
+  if (!res.ok) {
+    throw new Error(\`\${init?.method ?? 'GET'} \${url} \u2192 \${res.status} \${res.statusText}\`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export const ${camel}Api = {
+  list:   ()                               => req<${pascal}[]>('/${camel}'),
+  get:    (id: string)                     => req<${pascal}>(\`/${camel}/\${id}\`),
+  create: (body: Create${pascal}Dto)       => req<${pascal}>('/${camel}', { method: 'POST',  body: JSON.stringify(body) }),
+  update: (id: string, body: Update${pascal}Dto) =>
+    req<${pascal}>(\`/${camel}/\${id}\`,   { method: 'PATCH', body: JSON.stringify(body) }),
+  remove: (id: string)                     => req<void>(\`/${camel}/\${id}\`, { method: 'DELETE' }),
+} as const;
+`;
+}
+function apiTypesTs(pascal) {
+  return `export interface ${pascal} {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type Create${pascal}Dto = Omit<${pascal}, 'id' | 'createdAt' | 'updatedAt'>;
+export type Update${pascal}Dto = Partial<Create${pascal}Dto>;
+`;
+}
+function apiSchemasTs(camel, pascal) {
+  return `import { z } from 'zod';
+
+export const ${camel}Schema = z.object({
+  id:        z.string().uuid(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const create${pascal}Schema = ${camel}Schema.omit({ id: true, createdAt: true, updatedAt: true });
+export const update${pascal}Schema = create${pascal}Schema.partial();
+
+export type ${pascal}       = z.infer<typeof ${camel}Schema>;
+export type Create${pascal} = z.infer<typeof create${pascal}Schema>;
+export type Update${pascal} = z.infer<typeof update${pascal}Schema>;
+`;
+}
+function apiIndexTs(camel, pascal) {
+  return `export { ${camel}Api } from './${camel}.api';
+export type { ${pascal}, Create${pascal}Dto, Update${pascal}Dto } from './${camel}.types';
+`;
+}
+
+// src/generators/api/index.ts
+var apiGenerator = {
+  type: "api",
+  defaultBaseDir: "src/api",
+  generate(ctx) {
+    const { camelName, pascalName, outDir } = ctx;
+    const cwd = process.cwd();
+    const files = [
+      [`${camelName}.api.ts`, apiTs(camelName, pascalName)],
+      [`${camelName}.types.ts`, apiTypesTs(pascalName)],
+      [`${camelName}.schemas.ts`, apiSchemasTs(camelName, pascalName)],
+      ["index.ts", apiIndexTs(camelName, pascalName)]
+    ];
+    return files.map(([name, content]) => {
+      const fullPath = path6.join(outDir, name);
+      return { fullPath, relativePath: path6.relative(cwd, fullPath), content };
+    });
+  }
+};
+var api_default = apiGenerator;
+
+// src/generators/registry.ts
+var REGISTRY = /* @__PURE__ */ new Map([
+  ["component", component_default],
+  ["page", page_default],
+  ["feature", feature_default],
+  ["store", store_default],
+  ["api", api_default]
+]);
+var GENERATOR_TYPES = [...REGISTRY.keys()];
+function getGenerator(type) {
+  const gen = REGISTRY.get(type);
+  if (!gen) throw new Error(`Unknown generator type: "${type}". Valid types: ${GENERATOR_TYPES.join(", ")}`);
+  return gen;
+}
+function isValidGeneratorType(value) {
+  return REGISTRY.has(value);
+}
+
+// src/utils/file-utils.ts
+import fs2 from "fs";
+import path7 from "path";
+import * as p from "@clack/prompts";
+import chalk3 from "chalk";
+
+// src/utils/logger.ts
+import chalk2 from "chalk";
+var P = "  ";
+var log = {
+  info: (msg) => console.log(P + chalk2.cyan("\u2139") + " " + msg),
+  success: (msg) => console.log(P + chalk2.green("\u2713") + " " + chalk2.green(msg)),
+  warn: (msg) => console.log(P + chalk2.yellow("\u26A0") + " " + chalk2.yellow(msg)),
+  error: (msg) => console.error(P + chalk2.red("\u2717") + " " + chalk2.red(msg)),
+  blank: () => console.log(),
+  section: (msg) => {
+    console.log();
+    console.log(P + chalk2.bold(msg));
+  },
+  file: (action, filePath) => {
+    const icon = { create: chalk2.green("+"), skip: chalk2.yellow("\u2013"), overwrite: chalk2.blue("\u21BA") }[action];
+    const color = { create: chalk2.green, skip: chalk2.yellow, overwrite: chalk2.blue }[action];
+    console.log(P + "  " + icon + " " + color(filePath));
+  },
+  dryFile: (filePath) => {
+    console.log(P + "  " + chalk2.dim("[dry]") + " " + chalk2.dim(filePath));
+  }
+};
+
+// src/utils/file-utils.ts
+function fileExists(filePath) {
+  return fs2.existsSync(filePath);
+}
+async function writeGeneratedFiles(files, { dry, force }) {
+  let created = 0;
+  let skipped = 0;
+  let overwritten = 0;
+  for (const file of files) {
+    if (dry) {
+      log.dryFile(file.relativePath);
+      created++;
+      continue;
+    }
+    const exists = fileExists(file.fullPath);
+    if (exists && !force) {
+      const isTTY = Boolean(process.stdin.isTTY);
+      if (!isTTY) {
+        log.file("skip", file.relativePath);
+        skipped++;
+        continue;
+      }
+      const answer = await p.confirm({
+        message: chalk3.yellow(`${file.relativePath} already exists. Overwrite?`),
+        initialValue: false
+      });
+      if (p.isCancel(answer) || !answer) {
+        log.file("skip", file.relativePath);
+        skipped++;
+        continue;
+      }
+    }
+    fs2.mkdirSync(path7.dirname(file.fullPath), { recursive: true });
+    fs2.writeFileSync(file.fullPath, file.content, "utf-8");
+    if (exists) {
+      log.file("overwrite", file.relativePath);
+      overwritten++;
+    } else {
+      log.file("create", file.relativePath);
+      created++;
+    }
+  }
+  return { created, skipped, overwritten };
+}
+
+// src/utils/path-utils.ts
+import path8 from "path";
+function toPascalCase(str) {
+  return str.replace(/[-_/](.)/g, (_, c) => c.toUpperCase()).replace(/^(.)/, (_, c) => c.toUpperCase());
+}
+function toCamelCase(str) {
+  const pascal = toPascalCase(str);
+  return pascal.charAt(0).toLowerCase() + pascal.slice(1);
+}
+function toKebabCase(str) {
+  return str.replace(/([A-Z])/g, "-$1").toLowerCase().replace(/^-/, "").replace(/[_/]/g, "-");
+}
+function getBaseName(name) {
+  return path8.basename(name.replace(/\\/g, "/"));
+}
+function resolveCwd(...segments) {
+  return path8.resolve(process.cwd(), ...segments);
+}
+
+// src/commands/add.ts
+function parseAddArgs(argv) {
+  const positional = [];
+  let dir;
+  let dry = false;
+  let force = false;
+  for (const arg of argv) {
+    if (arg.startsWith("--dir=")) {
+      dir = arg.slice("--dir=".length);
+    } else if (arg === "--dry") {
+      dry = true;
+    } else if (arg === "--force") {
+      force = true;
+    } else if (!arg.startsWith("--")) {
+      positional.push(arg);
+    }
+  }
+  const type = positional[0];
+  const name = positional[1];
+  return { type, name, dir, dry, force };
+}
+function printAddUsage() {
+  console.log();
+  console.log(chalk4.bold("  create-atom-stack add") + chalk4.dim(" <type> <name> [options]"));
+  console.log();
+  console.log(chalk4.dim("  Types:"));
+  console.log("    " + chalk4.cyan("component") + chalk4.dim("    React component with types, test, and styles"));
+  console.log("    " + chalk4.cyan("page") + chalk4.dim("        Next.js App Router page with loading state"));
+  console.log("    " + chalk4.cyan("feature") + chalk4.dim("     Feature module with full directory structure"));
+  console.log("    " + chalk4.cyan("store") + chalk4.dim("       Zustand store with types"));
+  console.log("    " + chalk4.cyan("api") + chalk4.dim("         API module with types and Zod schemas"));
+  console.log();
+  console.log(chalk4.dim("  Options:"));
+  console.log("    " + chalk4.dim("--dry         Show what would be generated without writing files"));
+  console.log("    " + chalk4.dim("--force       Overwrite existing files without prompting"));
+  console.log("    " + chalk4.dim("--dir=<path>  Override the default output directory"));
+  console.log();
+  console.log(chalk4.dim("  Examples:"));
+  console.log("    npx create-atom-stack add component Button");
+  console.log("    npx create-atom-stack add page dashboard/reports");
+  console.log("    npx create-atom-stack add feature billing");
+  console.log("    npx create-atom-stack add store auth");
+  console.log("    npx create-atom-stack add api users");
+  console.log("    npx create-atom-stack add component Button " + chalk4.dim("--dry"));
+  console.log("    npx create-atom-stack add page admin/users " + chalk4.dim("--dir src/modules"));
+  console.log("    npx create-atom-stack add api payments " + chalk4.dim("--force"));
+  console.log();
+}
+async function promptType() {
+  const result = await p2.select({
+    message: "What do you want to generate?",
+    options: [
+      { value: "component", label: "component", hint: "React component + test + styles" },
+      { value: "page", label: "page", hint: "Next.js App Router page" },
+      { value: "feature", label: "feature", hint: "Feature module directory" },
+      { value: "store", label: "store", hint: "Zustand store + types" },
+      { value: "api", label: "api", hint: "API module + types + schemas" }
+    ]
+  });
+  if (p2.isCancel(result)) {
+    p2.cancel("Cancelled.");
+    process.exit(0);
+  }
+  return result;
+}
+async function promptName(type) {
+  const hints = {
+    component: "Button",
+    page: "dashboard/reports",
+    feature: "billing",
+    store: "auth",
+    api: "users"
+  };
+  const result = await p2.text({
+    message: `Name for the ${type}?`,
+    placeholder: hints[type],
+    validate: (v) => v.trim() ? void 0 : "Name is required."
+  });
+  if (p2.isCancel(result)) {
+    p2.cancel("Cancelled.");
+    process.exit(0);
+  }
+  return result;
+}
+function importHint(type, pascal, outDir) {
+  const rel = path9.relative(resolveCwd("src"), outDir).replace(/\\/g, "/");
+  const alias = `@/${rel}`;
+  switch (type) {
+    case "component":
+      return `import ${pascal} from '${alias}';`;
+    case "page":
+      return `// File-system route \u2014 no import needed.`;
+    case "feature":
+      return `import { } from '${alias}';`;
+    case "store":
+      return `import { use${pascal}Store } from '${alias}';`;
+    case "api":
+      return `import { ${pascal.toLowerCase()}Api } from '${alias}';`;
+  }
+}
+async function runAddCommand(argv) {
+  if (argv.includes("--help") || argv[0] === "--help") {
+    printAddUsage();
+    return;
+  }
+  let { type, name, dir, dry, force } = parseAddArgs(argv);
+  const isTTY = Boolean(process.stdin.isTTY);
+  if (!type || !isValidGeneratorType(type)) {
+    if (!isTTY) {
+      log.error(`Generator type is required. Valid types: ${GENERATOR_TYPES.join(", ")}`);
+      process.exit(1);
+    }
+    console.log();
+    p2.intro(chalk4.bold.cyan("create-atom-stack") + chalk4.dim("  add generator"));
+    type = await promptType();
+  }
+  if (!name?.trim()) {
+    if (!isTTY) {
+      log.error("Name is required.");
+      process.exit(1);
+    }
+    if (!type) {
+      console.log();
+      p2.intro(chalk4.bold.cyan("create-atom-stack") + chalk4.dim("  add generator"));
+    }
+    name = await promptName(type);
+  }
+  const generator = getGenerator(type);
+  const baseName = getBaseName(name);
+  const pascalName = toPascalCase(baseName);
+  const camelName = toCamelCase(baseName);
+  const kebabName = toKebabCase(baseName);
+  const baseDir = resolveCwd(dir ?? generator.defaultBaseDir);
+  const outDir = path9.join(baseDir, name);
+  const ctx = { rawName: name, pascalName, camelName, kebabName, outDir, dry, force };
+  const files = generator.generate(ctx);
+  const typeLabel = chalk4.bold.cyan(type);
+  const nameLabel = chalk4.bold(name);
+  if (dry) {
+    log.section(`Dry run \u2014 ${typeLabel} ${nameLabel}`);
+  } else {
+    log.section(`Generating ${typeLabel} ${nameLabel}`);
+  }
+  const { created, skipped, overwritten } = await writeGeneratedFiles(files, { dry, force });
+  console.log();
+  if (dry) {
+    log.warn(`No files written (dry run). Remove ${chalk4.bold("--dry")} to generate for real.`);
+    console.log();
+    return;
+  }
+  const parts = [];
+  if (created) parts.push(chalk4.green(`${created} created`));
+  if (overwritten) parts.push(chalk4.blue(`${overwritten} overwritten`));
+  if (skipped) parts.push(chalk4.yellow(`${skipped} skipped`));
+  log.success(`Done! ${parts.join(", ")}`);
+  console.log();
+  console.log("  " + chalk4.dim("Import:"));
+  console.log("    " + chalk4.cyan(importHint(type, pascalName, outDir)));
   console.log();
 }
 
@@ -3277,28 +4060,44 @@ function validateName(v) {
 }
 function printUsage() {
   console.log();
-  console.log(chalk2.bold("  create-atom-stack") + chalk2.dim(" [project-name] [options]"));
+  console.log(chalk5.bold("  create-atom-stack") + chalk5.dim(" <command> [options]"));
   console.log();
-  console.log(chalk2.dim("  Options:"));
-  console.log(chalk2.dim("    --pm=<npm|pnpm|yarn|bun>              Package manager (default: npm)"));
-  console.log(chalk2.dim("    --state=<zustand|jotai|none>          State management (default: zustand)"));
-  console.log(chalk2.dim("    --e2e=<playwright|cypress|none>       E2E framework (default: none)"));
-  console.log(chalk2.dim("    --skip-install                        Skip dependency install"));
-  console.log(chalk2.dim("    --help                                Show this help"));
+  console.log(chalk5.dim("  Commands:"));
+  console.log("    " + chalk5.cyan("[project-name]") + chalk5.dim("       Scaffold a new Next.js project (default)"));
+  console.log("    " + chalk5.cyan("add <type> <name>") + chalk5.dim("    Generate a component, page, feature, store, or api"));
   console.log();
-  console.log(chalk2.dim("  Examples:"));
-  console.log("    npx create-atom-stack                " + chalk2.dim("(interactive)"));
+  console.log(chalk5.dim("  Scaffold options:"));
+  console.log(chalk5.dim("    --pm=<npm|pnpm|yarn|bun>                     Package manager (default: npm)"));
+  console.log(chalk5.dim("    --state=<zustand|jotai|react-query|none>     State management (default: zustand)"));
+  console.log(chalk5.dim("    --e2e=<playwright|cypress|none>              E2E framework (default: none)"));
+  console.log(chalk5.dim("    --rxjs                                       Add RxJS (Observables + useObservable hook)"));
+  console.log(chalk5.dim("    --xstate                                     Add XState (state machines + useMachine)"));
+  console.log(chalk5.dim("    --skip-install                               Skip dependency install"));
+  console.log(chalk5.dim("    --no-git                                     Skip git init"));
+  console.log(chalk5.dim("    --help                                       Show this help"));
+  console.log();
+  console.log(chalk5.dim("  Examples:"));
+  console.log("    npx create-atom-stack                       " + chalk5.dim("(interactive)"));
   console.log("    npx create-atom-stack my-app");
-  console.log("    npx create-atom-stack my-app --pm=pnpm --state=jotai --e2e=playwright");
+  console.log("    npx create-atom-stack my-app --pm=pnpm --state=react-query");
+  console.log("    npx create-atom-stack add component Button");
+  console.log("    npx create-atom-stack add page dashboard/reports");
+  console.log("    npx create-atom-stack add --help            " + chalk5.dim("(generator help)"));
   console.log();
 }
 async function main() {
+  if (rawName === "add") {
+    await runAddCommand(flags);
+    process.exit(0);
+  }
   let projectName;
   let pm;
   let stateManagement;
   let e2e;
   let conventionalCommits;
+  let advancedAddons;
   let skipInstall;
+  let noGit;
   if (flags.includes("--help") || rawName === "--help") {
     printUsage();
     process.exit(0);
@@ -3306,14 +4105,14 @@ async function main() {
   const hasDirectName = rawName && !rawName.startsWith("-");
   const isTTY = Boolean(process.stdin.isTTY);
   if (!hasDirectName && !isTTY) {
-    console.error(chalk2.red("\n  Error: Project name is required in non-interactive mode.\n"));
+    console.error(chalk5.red("\n  Error: Project name is required in non-interactive mode.\n"));
     printUsage();
     process.exit(1);
   }
   if (hasDirectName) {
     const nameError = validateName(rawName);
     if (nameError) {
-      console.error(chalk2.red(`
+      console.error(chalk5.red(`
   Error: ${nameError}
 `));
       process.exit(1);
@@ -3323,18 +4122,23 @@ async function main() {
     stateManagement = flags.find((f) => f.startsWith("--state="))?.split("=")[1] ?? "zustand";
     e2e = flags.find((f) => f.startsWith("--e2e="))?.split("=")[1] ?? "none";
     conventionalCommits = !flags.includes("--no-conventional-commits");
+    advancedAddons = [
+      ...flags.includes("--rxjs") ? ["rxjs"] : [],
+      ...flags.includes("--xstate") ? ["xstate"] : []
+    ];
     skipInstall = flags.includes("--skip-install");
+    noGit = flags.includes("--no-git");
   } else {
     console.log();
-    p.intro(chalk2.bold.cyan("create-atom-stack") + chalk2.dim("  Atomic Next.js scaffold"));
-    const answers = await p.group(
+    p3.intro(chalk5.bold.cyan("create-atom-stack") + chalk5.dim("  Atomic Next.js scaffold"));
+    const answers = await p3.group(
       {
-        projectName: () => p.text({
+        projectName: () => p3.text({
           message: "Project name?",
           placeholder: "my-app",
           validate: validateName
         }),
-        pm: () => p.select({
+        pm: () => p3.select({
           message: "Package manager?",
           options: [
             { value: "npm", label: "npm" },
@@ -3343,15 +4147,16 @@ async function main() {
             { value: "bun", label: "bun" }
           ]
         }),
-        stateManagement: () => p.select({
+        stateManagement: () => p3.select({
           message: "State management?",
           options: [
             { value: "zustand", label: "Zustand", hint: "recommended" },
             { value: "jotai", label: "Jotai" },
+            { value: "react-query", label: "TanStack Query", hint: "server state" },
             { value: "none", label: "none" }
           ]
         }),
-        e2e: () => p.select({
+        e2e: () => p3.select({
           message: "E2E testing?",
           options: [
             { value: "none", label: "none" },
@@ -3359,18 +4164,30 @@ async function main() {
             { value: "cypress", label: "Cypress" }
           ]
         }),
-        conventionalCommits: () => p.confirm({
+        conventionalCommits: () => p3.confirm({
           message: "Conventional commits? (husky + commitlint)",
           initialValue: true
         }),
-        skipInstall: () => p.confirm({
+        advancedAddons: () => p3.multiselect({
+          message: "Advanced add-ons? (optional \u2014 space to select)",
+          options: [
+            { value: "rxjs", label: "RxJS", hint: "Observable streams + useObservable hook" },
+            { value: "xstate", label: "XState", hint: "State machines + useMachine integration" }
+          ],
+          required: false
+        }),
+        skipInstall: () => p3.confirm({
           message: "Skip install?",
+          initialValue: false
+        }),
+        noGit: () => p3.confirm({
+          message: "Skip git init?",
           initialValue: false
         })
       },
       {
         onCancel: () => {
-          p.cancel("Cancelled.");
+          p3.cancel("Cancelled.");
           process.exit(0);
         }
       }
@@ -3380,13 +4197,15 @@ async function main() {
     stateManagement = answers.stateManagement;
     e2e = answers.e2e;
     conventionalCommits = answers.conventionalCommits;
+    advancedAddons = answers.advancedAddons;
     skipInstall = answers.skipInstall;
-    p.outro(chalk2.dim("Scaffolding\u2026"));
+    noGit = answers.noGit;
+    p3.outro(chalk5.dim("Scaffolding\u2026"));
     console.log();
   }
   const spinner = ora({ prefixText: "  " }).start("Scaffolding project...");
-  createProject(projectName, { skipInstall, pm, stateManagement, e2e, conventionalCommits, spinner }).catch((err) => {
-    spinner.fail(chalk2.red("Failed: " + err.message));
+  createProject(projectName, { skipInstall, noGit, pm, stateManagement, e2e, conventionalCommits, advancedAddons, spinner }).catch((err) => {
+    spinner.fail(chalk5.red("Failed: " + err.message));
     console.log();
     process.exit(1);
   });

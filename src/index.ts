@@ -3,7 +3,8 @@ import * as p from '@clack/prompts';
 import chalk from 'chalk';
 import ora from 'ora';
 import { createProject } from './create.js';
-import type { PackageManager, StateManagement, E2EFramework } from './create.js';
+import { runAddCommand, printAddUsage } from './commands/add.js';
+import type { PackageManager, StateManagement, E2EFramework, AdvancedAddon } from './create.js';
 
 const [,, rawName, ...flags] = process.argv;
 
@@ -15,29 +16,47 @@ function validateName(v: string): string | undefined {
 
 function printUsage() {
   console.log();
-  console.log(chalk.bold('  create-atom-stack') + chalk.dim(' [project-name] [options]'));
+  console.log(chalk.bold('  create-atom-stack') + chalk.dim(' <command> [options]'));
   console.log();
-  console.log(chalk.dim('  Options:'));
-  console.log(chalk.dim('    --pm=<npm|pnpm|yarn|bun>              Package manager (default: npm)'));
-  console.log(chalk.dim('    --state=<zustand|jotai|none>          State management (default: zustand)'));
-  console.log(chalk.dim('    --e2e=<playwright|cypress|none>       E2E framework (default: none)'));
-  console.log(chalk.dim('    --skip-install                        Skip dependency install'));
-  console.log(chalk.dim('    --help                                Show this help'));
+  console.log(chalk.dim('  Commands:'));
+  console.log('    ' + chalk.cyan('[project-name]') + chalk.dim('       Scaffold a new Next.js project (default)'));
+  console.log('    ' + chalk.cyan('add <type> <name>') + chalk.dim('    Generate a component, page, feature, store, or api'));
+  console.log();
+  console.log(chalk.dim('  Scaffold options:'));
+  console.log(chalk.dim('    --pm=<npm|pnpm|yarn|bun>                     Package manager (default: npm)'));
+  console.log(chalk.dim('    --state=<zustand|jotai|react-query|none>     State management (default: zustand)'));
+  console.log(chalk.dim('    --e2e=<playwright|cypress|none>              E2E framework (default: none)'));
+  console.log(chalk.dim('    --rxjs                                       Add RxJS (Observables + useObservable hook)'));
+  console.log(chalk.dim('    --xstate                                     Add XState (state machines + useMachine)'));
+  console.log(chalk.dim('    --skip-install                               Skip dependency install'));
+  console.log(chalk.dim('    --no-git                                     Skip git init'));
+  console.log(chalk.dim('    --help                                       Show this help'));
   console.log();
   console.log(chalk.dim('  Examples:'));
-  console.log('    npx create-atom-stack                ' + chalk.dim('(interactive)'));
+  console.log('    npx create-atom-stack                       ' + chalk.dim('(interactive)'));
   console.log('    npx create-atom-stack my-app');
-  console.log('    npx create-atom-stack my-app --pm=pnpm --state=jotai --e2e=playwright');
+  console.log('    npx create-atom-stack my-app --pm=pnpm --state=react-query');
+  console.log('    npx create-atom-stack add component Button');
+  console.log('    npx create-atom-stack add page dashboard/reports');
+  console.log('    npx create-atom-stack add --help            ' + chalk.dim('(generator help)'));
   console.log();
 }
 
 async function main() {
+  /* ── Route 'add' subcommand ─────────────────────────────────────────────── */
+  if (rawName === 'add') {
+    await runAddCommand(flags);
+    process.exit(0);
+  }
+
   let projectName: string;
   let pm: PackageManager;
   let stateManagement: StateManagement;
   let e2e: E2EFramework;
   let conventionalCommits: boolean;
+  let advancedAddons: AdvancedAddon[];
   let skipInstall: boolean;
+  let noGit: boolean;
 
   if (flags.includes('--help') || rawName === '--help') {
     printUsage();
@@ -61,12 +80,17 @@ async function main() {
       process.exit(1);
     }
 
-    projectName     = rawName;
-    pm              = (flags.find((f) => f.startsWith('--pm='))?.split('=')[1] as PackageManager) ?? 'npm';
-    stateManagement = (flags.find((f) => f.startsWith('--state='))?.split('=')[1] as StateManagement) ?? 'zustand';
+    projectName         = rawName;
+    pm                  = (flags.find((f) => f.startsWith('--pm='))?.split('=')[1] as PackageManager) ?? 'npm';
+    stateManagement     = (flags.find((f) => f.startsWith('--state='))?.split('=')[1] as StateManagement) ?? 'zustand';
     e2e                 = (flags.find((f) => f.startsWith('--e2e='))?.split('=')[1] as E2EFramework) ?? 'none';
     conventionalCommits = !flags.includes('--no-conventional-commits');
+    advancedAddons      = [
+      ...(flags.includes('--rxjs')   ? ['rxjs'   as const] : []),
+      ...(flags.includes('--xstate') ? ['xstate' as const] : []),
+    ];
     skipInstall         = flags.includes('--skip-install');
+    noGit               = flags.includes('--no-git');
   } else {
     /* ── Interactive mode ── */
     console.log();
@@ -96,9 +120,10 @@ async function main() {
           p.select({
             message: 'State management?',
             options: [
-              { value: 'zustand' as const, label: 'Zustand', hint: 'recommended' },
-              { value: 'jotai'   as const, label: 'Jotai' },
-              { value: 'none'    as const, label: 'none' },
+              { value: 'zustand'      as const, label: 'Zustand',        hint: 'recommended' },
+              { value: 'jotai'        as const, label: 'Jotai' },
+              { value: 'react-query'  as const, label: 'TanStack Query',  hint: 'server state' },
+              { value: 'none'         as const, label: 'none' },
             ],
           }),
 
@@ -118,9 +143,25 @@ async function main() {
             initialValue: true,
           }),
 
+        advancedAddons: () =>
+          p.multiselect<AdvancedAddon>({
+            message: 'Advanced add-ons? (optional — space to select)',
+            options: [
+              { value: 'rxjs'   as const, label: 'RxJS',   hint: 'Observable streams + useObservable hook' },
+              { value: 'xstate' as const, label: 'XState', hint: 'State machines + useMachine integration' },
+            ],
+            required: false,
+          }),
+
         skipInstall: () =>
           p.confirm({
             message: 'Skip install?',
+            initialValue: false,
+          }),
+
+        noGit: () =>
+          p.confirm({
+            message: 'Skip git init?',
             initialValue: false,
           }),
       },
@@ -132,12 +173,14 @@ async function main() {
       },
     );
 
-    projectName     = answers.projectName as string;
-    pm              = answers.pm as PackageManager;
-    stateManagement = answers.stateManagement as StateManagement;
+    projectName         = answers.projectName as string;
+    pm                  = answers.pm as PackageManager;
+    stateManagement     = answers.stateManagement as StateManagement;
     e2e                 = answers.e2e as E2EFramework;
     conventionalCommits = answers.conventionalCommits as boolean;
+    advancedAddons      = answers.advancedAddons as AdvancedAddon[];
     skipInstall         = answers.skipInstall as boolean;
+    noGit               = answers.noGit as boolean;
 
     p.outro(chalk.dim('Scaffolding…'));
     console.log();
@@ -145,7 +188,7 @@ async function main() {
 
   const spinner = ora({ prefixText: '  ' }).start('Scaffolding project...');
 
-  createProject(projectName, { skipInstall, pm, stateManagement, e2e, conventionalCommits, spinner }).catch((err: Error) => {
+  createProject(projectName, { skipInstall, noGit, pm, stateManagement, e2e, conventionalCommits, advancedAddons, spinner }).catch((err: Error) => {
     spinner.fail(chalk.red('Failed: ' + err.message));
     console.log();
     process.exit(1);

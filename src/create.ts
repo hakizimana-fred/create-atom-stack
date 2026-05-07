@@ -6,15 +6,18 @@ import type { Ora } from 'ora';
 import { getFileMap } from './templates/index.js';
 
 export type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun';
-export type StateManagement = 'zustand' | 'jotai' | 'none';
+export type StateManagement = 'zustand' | 'jotai' | 'react-query' | 'none';
 export type E2EFramework = 'playwright' | 'cypress' | 'none';
+export type AdvancedAddon = 'rxjs' | 'xstate';
 
 interface CreateOptions {
   skipInstall: boolean;
+  noGit: boolean;
   pm: PackageManager;
   stateManagement: StateManagement;
   e2e: E2EFramework;
   conventionalCommits: boolean;
+  advancedAddons: AdvancedAddon[];
   spinner: Ora;
 }
 
@@ -154,7 +157,7 @@ function installPlaywrightBrowsers(cwd: string): Promise<void> {
 
 export async function createProject(
   projectName: string,
-  { skipInstall, pm, stateManagement, e2e, conventionalCommits, spinner }: CreateOptions,
+  { skipInstall, noGit, pm, stateManagement, e2e, conventionalCommits, advancedAddons, spinner }: CreateOptions,
 ) {
   const projectDir = path.resolve(process.cwd(), projectName);
 
@@ -168,7 +171,7 @@ export async function createProject(
   spinner.text = 'Creating project directory...';
   fs.mkdirSync(projectDir, { recursive: true });
 
-  const fileMap = getFileMap(projectName, { pm, stateManagement, e2e, conventionalCommits });
+  const fileMap = getFileMap(projectName, { pm, stateManagement, e2e, conventionalCommits, advancedAddons });
   const entries = Object.entries(fileMap);
   const total = entries.length;
   let written = 0;
@@ -190,67 +193,66 @@ export async function createProject(
 
   spinner.succeed(chalk.green(`${written} files written`));
 
-  if (skipInstall) {
-    printDone(projectName, pm, stateManagement, e2e, conventionalCommits, true);
-    return;
-  }
-
   // ── Step 2: Install dependencies ─────────────────────────────────────────
-  if (!isPMAvailable(pm)) {
-    spinner.warn(
-      chalk.yellow(
-        `"${pm}" is not installed or not in PATH. Install it first: https://` +
-        (pm === 'pnpm' ? 'pnpm.io/installation'
-        : pm === 'yarn' ? 'yarnpkg.com/getting-started/install'
-        : 'bun.sh/docs/installation'),
-      ),
-    );
-    printDone(projectName, pm, stateManagement, e2e, conventionalCommits, true);
-    return;
-  }
+  if (!skipInstall) {
+    if (!isPMAvailable(pm)) {
+      spinner.warn(
+        chalk.yellow(
+          `"${pm}" is not installed or not in PATH. Install it first: https://` +
+          (pm === 'pnpm' ? 'pnpm.io/installation'
+          : pm === 'yarn' ? 'yarnpkg.com/getting-started/install'
+          : 'bun.sh/docs/installation'),
+        ),
+      );
+    } else {
+      spinner.start(INSTALL_PHASES[0]);
+      try {
+        await runInstall(pm, projectDir, spinner);
+        spinner.succeed(chalk.green('Dependencies installed'));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        spinner.fail(chalk.red(`${pm} install failed`));
+        console.log();
+        console.log('  ' + chalk.yellow('⚠ Install error:') + chalk.dim(' ' + msg));
+        console.log('  ' + chalk.dim('Retry from inside the project:'));
+        console.log('    ' + chalk.cyan(`$ cd ${projectName}`));
+        console.log('    ' + chalk.cyan(`$ ${pm === 'npm' ? 'npm install' : `${pm} install`}`));
+        console.log();
+        process.exit(1);
+      }
 
-  spinner.start(INSTALL_PHASES[0]);
-  try {
-    await runInstall(pm, projectDir, spinner);
-    spinner.succeed(chalk.green('Dependencies installed'));
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    spinner.fail(chalk.red(`${pm} install failed`));
-    console.log();
-    console.log('  ' + chalk.yellow('⚠ Install error:') + chalk.dim(' ' + msg));
-    console.log('  ' + chalk.dim('Retry from inside the project:'));
-    console.log('    ' + chalk.cyan(`$ cd ${projectName}`));
-    console.log('    ' + chalk.cyan(`$ ${pm === 'npm' ? 'npm install' : `${pm} install`}`));
-    console.log();
-    process.exit(1);
-  }
-
-  // ── Step 3: Playwright browser install (only when chosen) ────────────────
-  if (e2e === 'playwright') {
-    spinner.start('Installing Playwright browsers (chromium)...');
-    try {
-      await installPlaywrightBrowsers(projectDir);
-      spinner.succeed(chalk.green('Playwright browsers installed'));
-    } catch {
-      spinner.warn(chalk.yellow('Playwright browser install failed — run "npx playwright install chromium" manually'));
+      // ── Step 3: Playwright browser install (only when chosen) ────────────
+      if (e2e === 'playwright') {
+        spinner.start('Installing Playwright browsers (chromium)...');
+        try {
+          await installPlaywrightBrowsers(projectDir);
+          spinner.succeed(chalk.green('Playwright browsers installed'));
+        } catch {
+          spinner.warn(chalk.yellow('Playwright browser install failed — run "npx playwright install chromium" manually'));
+        }
+      }
     }
   }
 
-  // ── Step 4: Git init + hooks ──────────────────────────────────────────────
-  spinner.start('Initializing git repository...');
-  try {
-    execSync('git init', { cwd: projectDir, stdio: 'pipe' });
-    spinner.text = 'Installing git hooks (husky)...';
-    const [bin, ...args] = PM_RUN[pm]('prepare');
-    execSync(`${bin} ${args.join(' ')}`, { cwd: projectDir, stdio: 'pipe' });
-    spinner.succeed(chalk.green('Git initialized + hooks installed'));
-  } catch {
-    spinner.warn(
-      chalk.yellow('Git setup skipped — run "git init && npm run prepare" manually'),
-    );
+  // ── Step 4: Git init + hooks (independent of install) ────────────────────
+  if (!noGit) {
+    spinner.start('Initializing git repository...');
+    try {
+      execSync('git init', { cwd: projectDir, stdio: 'pipe' });
+      if (!skipInstall && conventionalCommits) {
+        spinner.text = 'Installing git hooks (husky)...';
+        const [bin, ...args] = PM_RUN[pm]('prepare');
+        execSync(`${bin} ${args.join(' ')}`, { cwd: projectDir, stdio: 'pipe' });
+        spinner.succeed(chalk.green('Git initialized + hooks installed'));
+      } else {
+        spinner.succeed(chalk.green('Git initialized'));
+      }
+    } catch {
+      spinner.warn(chalk.yellow('Git setup skipped — run "git init" manually'));
+    }
   }
 
-  printDone(projectName, pm, stateManagement, e2e, conventionalCommits, false);
+  printDone(projectName, pm, stateManagement, e2e, conventionalCommits, advancedAddons, noGit, skipInstall);
 }
 
 /* ─── Done output ────────────────────────────────────────────────────────── */
@@ -261,19 +263,26 @@ function printDone(
   stateManagement: StateManagement,
   e2e: E2EFramework,
   conventionalCommits: boolean,
+  advancedAddons: AdvancedAddon[],
+  noGit: boolean,
   skipInstall: boolean,
 ) {
   const stateLabel =
-    stateManagement === 'none' ? 'none' : stateManagement === 'jotai' ? 'Jotai' : 'Zustand';
+    stateManagement === 'react-query' ? 'TanStack Query'
+    : stateManagement === 'jotai'     ? 'Jotai'
+    : stateManagement === 'zustand'   ? 'Zustand'
+    : 'none';
   const e2eLabel =
     e2e === 'playwright' ? 'Playwright' : e2e === 'cypress' ? 'Cypress' : 'none';
 
-  const devCmd = pm === 'npm' ? 'npm run dev' : `${pm} dev`;
+  const devCmd     = pm === 'npm' ? 'npm run dev' : `${pm} dev`;
   const installCmd = pm === 'npm' ? 'npm install' : `${pm} install`;
 
-  const nextSteps = skipInstall
-    ? [`cd ${projectName}`, installCmd, devCmd]
-    : [`cd ${projectName}`, devCmd];
+  const nextSteps = [
+    `cd ${projectName}`,
+    ...(skipInstall ? [installCmd] : []),
+    devCmd,
+  ];
 
   console.log();
   console.log(
@@ -286,7 +295,12 @@ function printDone(
   if (conventionalCommits) dxParts.push('Husky', 'Commitlint');
   if (e2e !== 'none') dxParts.push(e2eLabel);
   console.log('  ' + chalk.dim('DX:     ') + chalk.white(dxParts.join(' · ')));
+  if (advancedAddons.length > 0) {
+    const addonLabels = advancedAddons.map((a) => a === 'rxjs' ? 'RxJS' : 'XState');
+    console.log('  ' + chalk.dim('Addons: ') + chalk.white(addonLabels.join(' · ')));
+  }
   console.log('  ' + chalk.dim('PM:     ') + chalk.white(pm));
+  if (noGit) console.log('  ' + chalk.dim('Git:    ') + chalk.yellow('skipped (--no-git)'));
   console.log();
   console.log('  ' + chalk.dim('Next steps:'));
   for (const step of nextSteps) {

@@ -1,5 +1,11 @@
 import { packageJsonTemplate, type ScaffoldOptions } from './package-json.js';
 import {
+  rxCounterService,
+  useObservable,
+  toggleMachineTemplate,
+  useToggleMachine,
+} from './advanced.js';
+import {
   tsconfigJson,
   nextConfig,
   postCssConfig,
@@ -41,6 +47,8 @@ import {
 import {
   uiStore,
   jotaiStore,
+  reactQueryProviders,
+  usePostsQuery,
   commonTypes,
   typesIndex,
   cnUtil,
@@ -67,6 +75,9 @@ export function getFileMap(projectName: string, opts: ScaffoldOptions): FileMap 
     opts.stateManagement === 'zustand' ? uiStore
     : opts.stateManagement === 'jotai'  ? jotaiStore
     : null;
+
+  const withRxjs   = opts.advancedAddons.includes('rxjs');
+  const withXstate = opts.advancedAddons.includes('xstate');
 
   return {
     /* ── Root config files ─────────────────────────────────────────────── */
@@ -115,7 +126,7 @@ export function getFileMap(projectName: string, opts: ScaffoldOptions): FileMap 
 
     /* ── App ───────────────────────────────────────────────────────────── */
     'src/app/globals.css':       globalsCss,
-    'src/app/layout.tsx':        rootLayout(projectName),
+    'src/app/layout.tsx':        rootLayout(projectName, opts.stateManagement === 'react-query'),
     'src/app/page.tsx':          rootPage,
     'src/app/docs/page.tsx':     docsPage,
 
@@ -143,8 +154,12 @@ export function getFileMap(projectName: string, opts: ScaffoldOptions): FileMap 
     'src/design-system/tokens/radius.ts':     radiusToken,
     'src/design-system/tokens/shadows.ts':    shadowsToken,
 
-    /* ── Store ─────────────────────────────────────────────────────────── */
+    /* ── Store / server-state ─────────────────────────────────────────── */
     ...(storeFile ? { 'src/store/ui.store.ts': storeFile } : {}),
+    ...(opts.stateManagement === 'react-query' ? {
+      'src/lib/providers.tsx':        reactQueryProviders,
+      'src/hooks/use-posts.ts':        usePostsQuery,
+    } : {}),
 
     /* ── Types ─────────────────────────────────────────────────────────── */
     'src/types/common.ts': commonTypes,
@@ -157,6 +172,16 @@ export function getFileMap(projectName: string, opts: ScaffoldOptions): FileMap 
 
     /* ── Hooks ─────────────────────────────────────────────────────────── */
     'src/hooks/use-scroll-state.ts': useScrollState,
+    ...(withRxjs   ? { 'src/hooks/use-observable.ts': useObservable } : {}),
+    ...(withXstate ? { 'src/hooks/use-toggle-machine.ts': useToggleMachine } : {}),
+
+    /* ── Advanced add-ons ─────────────────────────────────────────────── */
+    ...(withRxjs ? {
+      'src/lib/rx/counter.service.ts': rxCounterService,
+    } : {}),
+    ...(withXstate ? {
+      'src/lib/machines/toggle.machine.ts': toggleMachineTemplate,
+    } : {}),
 
     /* ── Data ──────────────────────────────────────────────────────────── */
     'src/data/constants/navigation.ts': navigationConstants,

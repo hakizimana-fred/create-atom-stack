@@ -1,12 +1,14 @@
-export type StateManagement = 'zustand' | 'jotai' | 'none';
+export type StateManagement = 'zustand' | 'jotai' | 'react-query' | 'none';
 export type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun';
 export type E2EFramework = 'playwright' | 'cypress' | 'none';
+export type AdvancedAddon = 'rxjs' | 'xstate';
 
 export interface ScaffoldOptions {
   pm: PackageManager;
   stateManagement: StateManagement;
   e2e: E2EFramework;
   conventionalCommits: boolean;
+  advancedAddons: AdvancedAddon[];
 }
 
 export function packageJsonTemplate(name: string, opts: ScaffoldOptions): string {
@@ -19,9 +21,15 @@ export function packageJsonTemplate(name: string, opts: ScaffoldOptions): string
     " to install dependencies.'); process.exit(1); }\"";
 
   const stateDep: Record<string, string> =
-    opts.stateManagement === 'zustand' ? { zustand: '^5.0.11' }
-    : opts.stateManagement === 'jotai'  ? { jotai: '^2.11.3' }
+    opts.stateManagement === 'zustand'      ? { zustand: '^5.0.11' }
+    : opts.stateManagement === 'jotai'      ? { jotai: '^2.11.3' }
+    : opts.stateManagement === 'react-query' ? { '@tanstack/react-query': '^5.80.2' }
     : {};
+
+  const advancedDeps: Record<string, string> = {
+    ...(opts.advancedAddons.includes('rxjs')   ? { rxjs: '^7.8.2' } : {}),
+    ...(opts.advancedAddons.includes('xstate') ? { xstate: '^5.19.4', '@xstate/react': '^4.1.3' } : {}),
+  };
 
   const e2eDep: Record<string, string> =
     opts.e2e === 'playwright' ? { '@playwright/test': '^1.52.0' }
@@ -73,6 +81,7 @@ export function packageJsonTemplate(name: string, opts: ScaffoldOptions): string
         react: '19.1.0',
         'react-dom': '19.1.0',
         ...stateDep,
+        ...advancedDeps,
       },
       devDependencies: {
         ...(opts.conventionalCommits ? {

@@ -1,11 +1,18 @@
-export function rootLayout(projectName: string): string {
+export function rootLayout(projectName: string, withQueryProvider = false): string {
   const title = projectName
     .replace(/-/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
+  const providerImport = withQueryProvider
+    ? `\nimport { Providers } from '@/lib/providers';`
+    : '';
+  const bodyContent = withQueryProvider
+    ? `        <Providers>{children}</Providers>`
+    : `        {children}`;
+
   return `import type { Metadata } from 'next';
 import { GeistSans } from 'geist/font/sans';
-import { GeistMono } from 'geist/font/mono';
+import { GeistMono } from 'geist/font/mono';${providerImport}
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -25,7 +32,7 @@ export default function RootLayout({
           'antialiased font-sans text-base text-txt-primary bg-surface-page min-h-dvh',
         ].join(' ')}
       >
-        {children}
+${bodyContent}
       </body>
     </html>
   );
