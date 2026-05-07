@@ -11,13 +11,17 @@ import type { GeneratorType, AddCommandOptions } from '../types/generator.js';
 
 function parseAddArgs(argv: string[]): AddCommandOptions {
   const positional: string[] = [];
-  let dir: string | undefined;
+  let dir:  string | undefined;
+  let name: string | undefined;
   let dry   = false;
   let force = false;
 
   for (const arg of argv) {
     if (arg.startsWith('--dir=')) {
       dir = arg.slice('--dir='.length);
+    } else if (arg.startsWith('--name=')) {
+      // --name="dashboard/[id]" avoids zsh glob expansion on brackets
+      name = arg.slice('--name='.length);
     } else if (arg === '--dry') {
       dry = true;
     } else if (arg === '--force') {
@@ -28,8 +32,8 @@ function parseAddArgs(argv: string[]): AddCommandOptions {
   }
 
   return {
-    type:  positional[0] as GeneratorType | undefined,
-    name:  positional[1],
+    type: positional[0] as GeneratorType | undefined,
+    name: name ?? positional[1],
     dir,
     dry,
     force,
@@ -56,9 +60,10 @@ export function printAddUsage() {
   console.log('    ' + chalk.cyan('api')       + chalk.dim('         API module + types + schemas   src/api/'));
   console.log();
   console.log(chalk.dim('  Options:'));
-  console.log('    ' + chalk.dim('--dry         Show what would be generated without writing files'));
-  console.log('    ' + chalk.dim('--force       Overwrite existing files without prompting'));
-  console.log('    ' + chalk.dim('--dir=<path>  Override the default output directory'));
+  console.log('    ' + chalk.dim('--dry           Show what would be generated without writing files'));
+  console.log('    ' + chalk.dim('--force         Overwrite existing files without prompting'));
+  console.log('    ' + chalk.dim('--dir=<path>    Override the default output directory'));
+  console.log('    ' + chalk.dim('--name=<value>  Pass the name as a flag (avoids zsh bracket glob issues)'));
   console.log();
   console.log(chalk.dim('  Examples:'));
   console.log('    npx create-atom-stack add atom Button');
@@ -66,7 +71,8 @@ export function printAddUsage() {
   console.log('    npx create-atom-stack add organism Navbar');
   console.log('    npx create-atom-stack add template DashboardLayout');
   console.log('    npx create-atom-stack add page dashboard/reports');
-  console.log('    npx create-atom-stack add page "dashboard/[id]"     ' + chalk.dim('← quote dynamic routes'));
+  console.log('    npx create-atom-stack add page "dashboard/[id]"                   ' + chalk.dim('← quoted'));
+  console.log('    npx create-atom-stack add page --name="dashboard/[id]"            ' + chalk.dim('← flag form (no quoting needed in zsh)'));
   console.log('    npx create-atom-stack add store auth                ' + chalk.dim('← auto-detects Zustand/RTK/Jotai/MobX'));
   console.log('    npx create-atom-stack add api users');
   console.log('    npx create-atom-stack add atom Button '             + chalk.dim('--dry'));
@@ -115,8 +121,10 @@ async function promptName(type: GeneratorType): Promise<string> {
     api:       'users',
   };
 
+  const isPage = type === 'page';
   const result = await p.text({
-    message: `Name for the ${type}?`,
+    message: `Name for the ${type}?` +
+      (isPage ? chalk.dim('  (dynamic routes: dashboard/[id]  or  --name="dashboard/[id]")') : ''),
     placeholder: placeholders[type],
     validate: (v) => (v.trim() ? undefined : 'Name is required.'),
   });

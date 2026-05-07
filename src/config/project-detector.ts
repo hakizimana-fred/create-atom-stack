@@ -33,6 +33,28 @@ export function detectStateManagement(cwd = process.cwd()): SupportedStateManage
   return null;
 }
 
+type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun';
+
+/** Detect the package manager from lockfiles / package.json#packageManager. */
+export function detectPackageManager(cwd = process.cwd()): PackageManager {
+  if (
+    fs.existsSync(path.join(cwd, 'bun.lock')) ||
+    fs.existsSync(path.join(cwd, 'bun.lockb'))
+  ) return 'bun';
+  if (fs.existsSync(path.join(cwd, 'pnpm-lock.yaml'))) return 'pnpm';
+  if (fs.existsSync(path.join(cwd, 'yarn.lock')))       return 'yarn';
+
+  // Honour the corepack field when present
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf-8')) as { packageManager?: string };
+    if (pkg.packageManager?.startsWith('pnpm')) return 'pnpm';
+    if (pkg.packageManager?.startsWith('yarn')) return 'yarn';
+    if (pkg.packageManager?.startsWith('bun'))  return 'bun';
+  } catch { /* ignore */ }
+
+  return 'npm';
+}
+
 /** Returns 'app' | 'pages' by inspecting the directory tree. */
 export function detectRouter(cwd = process.cwd()): 'app' | 'pages' | null {
   if (fs.existsSync(path.join(cwd, 'src', 'app')))   return 'app';

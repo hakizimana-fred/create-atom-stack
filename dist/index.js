@@ -3,7 +3,7 @@
 // src/index.ts
 import * as p4 from "@clack/prompts";
 import chalk8 from "chalk";
-import ora from "ora";
+import ora2 from "ora";
 
 // src/create.ts
 import path from "path";
@@ -2491,7 +2491,7 @@ export function formatDatetime(date: Date | string): string {
   return DATETIME_FORMATTER.format(new Date(date));
 }
 `;
-var apiClient = `const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+var apiClient = `const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean>;
@@ -3760,8 +3760,11 @@ function toPascal(s) {
 }
 
 // src/generator-templates/page.ts
+var LAYOUT_IMPORTS = `import { Header } from '@/components/organisms/header';
+import { Footer } from '@/components/organisms/footer';`;
 function staticPageTsx(pascal, title) {
-  return `import type { Metadata } from 'next';
+  return `${LAYOUT_IMPORTS}
+import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: '${title}',
@@ -3769,12 +3772,16 @@ export const metadata: Metadata = {
 
 export default function ${pascal}Page() {
   return (
-    <main className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold tracking-tight">${title}</h1>
-      <p className="mt-2 text-muted-foreground">
-        Start building your ${title.toLowerCase()} page here.
-      </p>
-    </main>
+    <div className="flex min-h-dvh flex-col">
+      <Header />
+      <main className="flex-1 container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold tracking-tight">${title}</h1>
+        <p className="mt-2 text-txt-secondary">
+          Start building your ${title.toLowerCase()} page here.
+        </p>
+      </main>
+      <Footer />
+    </div>
   );
 }
 `;
@@ -3794,8 +3801,9 @@ function buildParamDestructure(params) {
 function dynamicPageTsx(pascal, title, params) {
   const firstParam = params[0];
   const firstIsArray = firstParam.tsType.includes("[]");
-  const exampleUsage = firstIsArray ? `<p>Path: {${firstParam.name}${firstParam.tsType.includes("undefined") ? `?.join('/') ?? 'index'` : `.join('/')`}}</p>` : `<p>ID: {${firstParam.name}}</p>`;
-  return `import type { Metadata } from 'next';
+  const exampleUsage = firstIsArray ? `<p className="text-txt-secondary">Path: {${firstParam.name}${firstParam.tsType.includes("undefined") ? `?.join('/') ?? 'index'` : `.join('/')`}}</p>` : `<p className="text-txt-secondary">ID: {${firstParam.name}}</p>`;
+  return `${LAYOUT_IMPORTS}
+import type { Metadata } from 'next';
 
 ${buildParamsType(params)}
 
@@ -3808,10 +3816,14 @@ export default async function ${pascal}Page({ params }: Params) {
   ${buildParamDestructure(params)}
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold tracking-tight">${title}</h1>
-      ${exampleUsage}
-    </main>
+    <div className="flex min-h-dvh flex-col">
+      <Header />
+      <main className="flex-1 container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold tracking-tight">${title}</h1>
+        ${exampleUsage}
+      </main>
+      <Footer />
+    </div>
   );
 }
 `;
@@ -3942,8 +3954,10 @@ var feature_default = featureGenerator;
 import path11 from "path";
 
 // src/resolvers/state-management.ts
+import { spawn as spawn2 } from "child_process";
 import * as p from "@clack/prompts";
 import chalk4 from "chalk";
+import ora from "ora";
 
 // src/config/atom-config.ts
 import fs2 from "fs";
@@ -3995,8 +4009,45 @@ function detectStateManagement(cwd = process.cwd()) {
   if (deps.has("mobx")) return "mobx";
   return null;
 }
+function detectPackageManager(cwd = process.cwd()) {
+  if (fs3.existsSync(path10.join(cwd, "bun.lock")) || fs3.existsSync(path10.join(cwd, "bun.lockb"))) return "bun";
+  if (fs3.existsSync(path10.join(cwd, "pnpm-lock.yaml"))) return "pnpm";
+  if (fs3.existsSync(path10.join(cwd, "yarn.lock"))) return "yarn";
+  try {
+    const pkg = JSON.parse(fs3.readFileSync(path10.join(cwd, "package.json"), "utf-8"));
+    if (pkg.packageManager?.startsWith("pnpm")) return "pnpm";
+    if (pkg.packageManager?.startsWith("yarn")) return "yarn";
+    if (pkg.packageManager?.startsWith("bun")) return "bun";
+  } catch {
+  }
+  return "npm";
+}
 
 // src/resolvers/state-management.ts
+var SM_PACKAGES = {
+  "zustand": ["zustand"],
+  "redux-toolkit": ["@reduxjs/toolkit", "react-redux"],
+  "jotai": ["jotai"],
+  "mobx": ["mobx", "mobx-react-lite"]
+};
+var PM_ADD = {
+  npm: "install",
+  pnpm: "add",
+  yarn: "add",
+  bun: "add"
+};
+function installPackages(packages, pm) {
+  const cmd = `${pm} ${PM_ADD[pm] ?? "install"} ${packages.join(" ")}`;
+  return new Promise((resolve, reject) => {
+    const child = spawn2(cmd, [], {
+      cwd: process.cwd(),
+      stdio: "pipe",
+      shell: true
+    });
+    child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Exit ${code}`)));
+    child.on("error", reject);
+  });
+}
 async function resolveStateManagement() {
   const config = readAtomConfig();
   if (config?.stateManagement && config.stateManagement !== "none") {
@@ -4028,6 +4079,22 @@ async function resolveStateManagement() {
     process.exit(0);
   }
   patchAtomConfig({ stateManagement: result });
+  const packages = SM_PACKAGES[result];
+  if (packages) {
+    const pm = detectPackageManager();
+    const spinner = ora({ prefixText: "  " }).start(
+      `Installing ${chalk4.cyan(packages.join(" "))} via ${chalk4.dim(pm)}\u2026`
+    );
+    try {
+      await installPackages(packages, pm);
+      spinner.succeed(chalk4.green(`Installed ${packages.join(", ")}`));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      spinner.warn(
+        chalk4.yellow(`Install failed (${msg}). Run manually: `) + chalk4.cyan(`${pm} ${PM_ADD[pm]} ${packages.join(" ")}`)
+      );
+    }
+  }
   return result;
 }
 
@@ -4459,11 +4526,14 @@ function resolveCwd(...segments) {
 function parseAddArgs(argv) {
   const positional = [];
   let dir;
+  let name;
   let dry = false;
   let force = false;
   for (const arg of argv) {
     if (arg.startsWith("--dir=")) {
       dir = arg.slice("--dir=".length);
+    } else if (arg.startsWith("--name=")) {
+      name = arg.slice("--name=".length);
     } else if (arg === "--dry") {
       dry = true;
     } else if (arg === "--force") {
@@ -4474,7 +4544,7 @@ function parseAddArgs(argv) {
   }
   return {
     type: positional[0],
-    name: positional[1],
+    name: name ?? positional[1],
     dir,
     dry,
     force
@@ -4498,9 +4568,10 @@ function printAddUsage() {
   console.log("    " + chalk7.cyan("api") + chalk7.dim("         API module + types + schemas   src/api/"));
   console.log();
   console.log(chalk7.dim("  Options:"));
-  console.log("    " + chalk7.dim("--dry         Show what would be generated without writing files"));
-  console.log("    " + chalk7.dim("--force       Overwrite existing files without prompting"));
-  console.log("    " + chalk7.dim("--dir=<path>  Override the default output directory"));
+  console.log("    " + chalk7.dim("--dry           Show what would be generated without writing files"));
+  console.log("    " + chalk7.dim("--force         Overwrite existing files without prompting"));
+  console.log("    " + chalk7.dim("--dir=<path>    Override the default output directory"));
+  console.log("    " + chalk7.dim("--name=<value>  Pass the name as a flag (avoids zsh bracket glob issues)"));
   console.log();
   console.log(chalk7.dim("  Examples:"));
   console.log("    npx create-atom-stack add atom Button");
@@ -4508,7 +4579,8 @@ function printAddUsage() {
   console.log("    npx create-atom-stack add organism Navbar");
   console.log("    npx create-atom-stack add template DashboardLayout");
   console.log("    npx create-atom-stack add page dashboard/reports");
-  console.log('    npx create-atom-stack add page "dashboard/[id]"     ' + chalk7.dim("\u2190 quote dynamic routes"));
+  console.log('    npx create-atom-stack add page "dashboard/[id]"                   ' + chalk7.dim("\u2190 quoted"));
+  console.log('    npx create-atom-stack add page --name="dashboard/[id]"            ' + chalk7.dim("\u2190 flag form (no quoting needed in zsh)"));
   console.log("    npx create-atom-stack add store auth                " + chalk7.dim("\u2190 auto-detects Zustand/RTK/Jotai/MobX"));
   console.log("    npx create-atom-stack add api users");
   console.log("    npx create-atom-stack add atom Button " + chalk7.dim("--dry"));
@@ -4554,8 +4626,9 @@ async function promptName(type) {
     store: "auth",
     api: "users"
   };
+  const isPage = type === "page";
   const result = await p3.text({
-    message: `Name for the ${type}?`,
+    message: `Name for the ${type}?` + (isPage ? chalk7.dim('  (dynamic routes: dashboard/[id]  or  --name="dashboard/[id]")') : ""),
     placeholder: placeholders[type],
     validate: (v) => v.trim() ? void 0 : "Name is required."
   });
@@ -4800,7 +4873,7 @@ async function main() {
     p4.outro(chalk8.dim("Scaffolding\u2026"));
     console.log();
   }
-  const spinner = ora({ prefixText: "  " }).start("Scaffolding project...");
+  const spinner = ora2({ prefixText: "  " }).start("Scaffolding project...");
   createProject(projectName, { skipInstall, noGit, pm, stateManagement, e2e, conventionalCommits, advancedAddons, spinner }).catch((err) => {
     spinner.fail(chalk8.red("Failed: " + err.message));
     console.log();

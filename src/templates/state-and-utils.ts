@@ -166,7 +166,7 @@ export function formatDatetime(date: Date | string): string {
 }
 `;
 
-export const apiClient = `const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+export const apiClient = `const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean>;

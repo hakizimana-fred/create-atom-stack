@@ -1,9 +1,13 @@
 import type { ParsedRoute, DynamicParam } from '../parsers/route-parser.js';
 
+const LAYOUT_IMPORTS = `import { Header } from '@/components/organisms/header';
+import { Footer } from '@/components/organisms/footer';`;
+
 /* ── Static page ─────────────────────────────────────────────────────────── */
 
 function staticPageTsx(pascal: string, title: string): string {
-  return `import type { Metadata } from 'next';
+  return `${LAYOUT_IMPORTS}
+import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: '${title}',
@@ -11,12 +15,16 @@ export const metadata: Metadata = {
 
 export default function ${pascal}Page() {
   return (
-    <main className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold tracking-tight">${title}</h1>
-      <p className="mt-2 text-muted-foreground">
-        Start building your ${title.toLowerCase()} page here.
-      </p>
-    </main>
+    <div className="flex min-h-dvh flex-col">
+      <Header />
+      <main className="flex-1 container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold tracking-tight">${title}</h1>
+        <p className="mt-2 text-txt-secondary">
+          Start building your ${title.toLowerCase()} page here.
+        </p>
+      </main>
+      <Footer />
+    </div>
   );
 }
 `;
@@ -38,10 +46,11 @@ function dynamicPageTsx(pascal: string, title: string, params: DynamicParam[]): 
   const firstParam = params[0];
   const firstIsArray = firstParam.tsType.includes('[]');
   const exampleUsage = firstIsArray
-    ? `<p>Path: {${firstParam.name}${firstParam.tsType.includes('undefined') ? `?.join('/') ?? 'index'` : `.join('/')`}}</p>`
-    : `<p>ID: {${firstParam.name}}</p>`;
+    ? `<p className="text-txt-secondary">Path: {${firstParam.name}${firstParam.tsType.includes('undefined') ? `?.join('/') ?? 'index'` : `.join('/')`}}</p>`
+    : `<p className="text-txt-secondary">ID: {${firstParam.name}}</p>`;
 
-  return `import type { Metadata } from 'next';
+  return `${LAYOUT_IMPORTS}
+import type { Metadata } from 'next';
 
 ${buildParamsType(params)}
 
@@ -54,10 +63,14 @@ export default async function ${pascal}Page({ params }: Params) {
   ${buildParamDestructure(params)}
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold tracking-tight">${title}</h1>
-      ${exampleUsage}
-    </main>
+    <div className="flex min-h-dvh flex-col">
+      <Header />
+      <main className="flex-1 container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold tracking-tight">${title}</h1>
+        ${exampleUsage}
+      </main>
+      <Footer />
+    </div>
   );
 }
 `;
