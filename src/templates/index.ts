@@ -46,6 +46,7 @@ import {
 } from './design-tokens.js';
 import {
   uiStore,
+  uiStoreStandalone,
   jotaiStore,
   reactQueryProviders,
   usePostsQuery,
@@ -71,10 +72,11 @@ export type { ScaffoldOptions };
 export type FileMap = Record<string, string>;
 
 export function getFileMap(projectName: string, opts: ScaffoldOptions): FileMap {
+  // Always emit ui.store.ts so the Header organism's import never breaks.
   const storeFile =
-    opts.stateManagement === 'zustand' ? uiStore
-    : opts.stateManagement === 'jotai'  ? jotaiStore
-    : null;
+    opts.stateManagement === 'zustand'      ? uiStore
+    : opts.stateManagement === 'jotai'      ? jotaiStore
+    : uiStoreStandalone; // 'none' | 'react-query' — no external dep version
 
   const withRxjs   = opts.advancedAddons.includes('rxjs');
   const withXstate = opts.advancedAddons.includes('xstate');
@@ -155,7 +157,7 @@ export function getFileMap(projectName: string, opts: ScaffoldOptions): FileMap 
     'src/design-system/tokens/shadows.ts':    shadowsToken,
 
     /* ── Store / server-state ─────────────────────────────────────────── */
-    ...(storeFile ? { 'src/store/ui.store.ts': storeFile } : {}),
+    'src/store/ui.store.ts': storeFile,
     ...(opts.stateManagement === 'react-query' ? {
       'src/lib/providers.tsx':        reactQueryProviders,
       'src/hooks/use-posts.ts':        usePostsQuery,

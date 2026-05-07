@@ -2334,6 +2334,39 @@ export const glow = {
 `;
 
 // src/templates/state-and-utils.ts
+var uiStoreStandalone = `'use client';
+
+import { useState, useCallback, useEffect } from 'react';
+
+type Theme = 'light' | 'dark';
+
+export function useUiStore() {
+  const [theme, setThemeState] = useState<Theme>('dark');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('ui-theme') as Theme | null;
+    const initial: Theme = stored ?? 'dark';
+    setThemeState(initial);
+    document.documentElement.setAttribute('data-theme', initial);
+  }, []);
+
+  const setTheme = useCallback((next: Theme) => {
+    setThemeState(next);
+    localStorage.setItem('ui-theme', next);
+    document.documentElement.setAttribute('data-theme', next);
+  }, []);
+
+  const toggleTheme = useCallback(
+    () => setTheme(theme === 'dark' ? 'light' : 'dark'),
+    [theme, setTheme],
+  );
+
+  const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
+
+  return { theme, sidebarOpen, setTheme, toggleTheme, toggleSidebar };
+}
+`;
 var jotaiStore = `import { atom } from 'jotai';
 
 type Theme = 'light' | 'dark';
@@ -3059,7 +3092,7 @@ test.describe('Docs page', () => {
 
 // src/templates/index.ts
 function getFileMap(projectName, opts) {
-  const storeFile = opts.stateManagement === "zustand" ? uiStore : opts.stateManagement === "jotai" ? jotaiStore : null;
+  const storeFile = opts.stateManagement === "zustand" ? uiStore : opts.stateManagement === "jotai" ? jotaiStore : uiStoreStandalone;
   const withRxjs = opts.advancedAddons.includes("rxjs");
   const withXstate = opts.advancedAddons.includes("xstate");
   return {
@@ -3130,7 +3163,7 @@ function getFileMap(projectName, opts) {
     "src/design-system/tokens/radius.ts": radiusToken,
     "src/design-system/tokens/shadows.ts": shadowsToken,
     /* ── Store / server-state ─────────────────────────────────────────── */
-    ...storeFile ? { "src/store/ui.store.ts": storeFile } : {},
+    "src/store/ui.store.ts": storeFile,
     ...opts.stateManagement === "react-query" ? {
       "src/lib/providers.tsx": reactQueryProviders,
       "src/hooks/use-posts.ts": usePostsQuery

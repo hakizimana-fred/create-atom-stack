@@ -1,3 +1,41 @@
+/**
+ * Standalone theme store — no external state library.
+ * Used when stateManagement === 'none' | 'react-query'.
+ */
+export const uiStoreStandalone = `'use client';
+
+import { useState, useCallback, useEffect } from 'react';
+
+type Theme = 'light' | 'dark';
+
+export function useUiStore() {
+  const [theme, setThemeState] = useState<Theme>('dark');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('ui-theme') as Theme | null;
+    const initial: Theme = stored ?? 'dark';
+    setThemeState(initial);
+    document.documentElement.setAttribute('data-theme', initial);
+  }, []);
+
+  const setTheme = useCallback((next: Theme) => {
+    setThemeState(next);
+    localStorage.setItem('ui-theme', next);
+    document.documentElement.setAttribute('data-theme', next);
+  }, []);
+
+  const toggleTheme = useCallback(
+    () => setTheme(theme === 'dark' ? 'light' : 'dark'),
+    [theme, setTheme],
+  );
+
+  const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
+
+  return { theme, sidebarOpen, setTheme, toggleTheme, toggleSidebar };
+}
+`;
+
 export const jotaiStore = `import { atom } from 'jotai';
 
 type Theme = 'light' | 'dark';
