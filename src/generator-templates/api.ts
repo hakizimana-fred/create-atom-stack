@@ -1,56 +1,41 @@
 export type ApiMode = 'crud' | 'query' | 'action' | 'custom';
 
-/* ── Request helper (shared across all modes) ────────────────────────────── */
-
-const REQ_HELPER = `const BASE = process.env.NEXT_PUBLIC_API_URL ?? '/api';
-
-async function req<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(\`\${BASE}\${url}\`, {
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-    ...init,
-  });
-  if (!res.ok) {
-    throw new Error(\`\${init?.method ?? 'GET'} \${url} → \${res.status} \${res.statusText}\`);
-  }
-  return res.json() as Promise<T>;
-}`;
-
 /* ── Type import line ────────────────────────────────────────────────────── */
 
-function typeImport(camel: string, pascal: string, useZod: boolean, mode: ApiMode): string {
-  const source = useZod ? `./${camel}.schemas` : `./${camel}.types`;
-  if (mode === 'custom') return '';
+function buildImports(camel: string, pascal: string, useZod: boolean, mode: ApiMode): string {
+  const httpImport = `import { http } from '@/lib/http';`;
+  if (mode === 'custom') return httpImport;
 
+  const source = useZod ? `./${camel}.schemas` : `./${camel}.types`;
   const names: string[] = [pascal];
   if (mode === 'crud' || mode === 'action') names.push(`Create${pascal}`, `Update${pascal}`);
 
-  return `import type { ${names.join(', ')} } from '${source}';\n\n`;
+  return `${httpImport}\nimport type { ${names.join(', ')} } from '${source}';`;
 }
 
 /* ── API method bodies per mode ──────────────────────────────────────────── */
 
 function crudMethods(camel: string, pascal: string): string {
   return `export const ${camel}Api = {
-  list:   ()                             => req<${pascal}[]>('/${camel}'),
-  get:    (id: string)                   => req<${pascal}>(\`/${camel}/\${id}\`),
-  create: (body: Create${pascal})        => req<${pascal}>('/${camel}', { method: 'POST',  body: JSON.stringify(body) }),
+  list:   ()                             => http.get<${pascal}[]>('/${camel}'),
+  get:    (id: string)                   => http.get<${pascal}>(\`/${camel}/\${id}\`),
+  create: (body: Create${pascal})        => http.post<${pascal}>('/${camel}', body),
   update: (id: string, body: Update${pascal}) =>
-    req<${pascal}>(\`/${camel}/\${id}\`, { method: 'PATCH', body: JSON.stringify(body) }),
-  remove: (id: string)                   => req<void>(\`/${camel}/\${id}\`, { method: 'DELETE' }),
+    http.patch<${pascal}>(\`/${camel}/\${id}\`, body),
+  remove: (id: string)                   => http.delete<void>(\`/${camel}/\${id}\`),
 } as const;`;
 }
 
 function queryMethods(camel: string, pascal: string): string {
   return `export const ${camel}Api = {
-  list: ()             => req<${pascal}[]>('/${camel}'),
-  get:  (id: string)   => req<${pascal}>(\`/${camel}/\${id}\`),
+  list: ()             => http.get<${pascal}[]>('/${camel}'),
+  get:  (id: string)   => http.get<${pascal}>(\`/${camel}/\${id}\`),
 } as const;`;
 }
 
 function actionMethods(camel: string, pascal: string): string {
   return `export const ${camel}Api = {
-  execute: (body: Create${pascal}) =>
-    req<${pascal}>('/${camel}', { method: 'POST', body: JSON.stringify(body) }),
+  execute: (body: Create${pascal}) => http.post<${pascal}>('/${camel}', body),
 } as const;`;
 }
 
@@ -63,7 +48,7 @@ function customMethods(camel: string): string {
 /* ── Public factory ──────────────────────────────────────────────────────── */
 
 export function apiTs(camel: string, pascal: string, mode: ApiMode, useZod: boolean): string {
-  const imp = typeImport(camel, pascal, useZod, mode);
+  const imports = buildImports(camel, pascal, useZod, mode);
   let methods: string;
   switch (mode) {
     case 'query':  methods = queryMethods(camel, pascal);  break;
@@ -71,7 +56,7 @@ export function apiTs(camel: string, pascal: string, mode: ApiMode, useZod: bool
     case 'custom': methods = customMethods(camel);         break;
     default:       methods = crudMethods(camel, pascal);
   }
-  return `${imp}${REQ_HELPER}\n\n${methods}\n`;
+  return `${imports}\n\n${methods}\n`;
 }
 
 /* ── Type sources ────────────────────────────────────────────────────────── */

@@ -153,21 +153,41 @@ Add new stores at ${B1}src/store/<feature>.store.ts${B1}.
 
 ---
 
-## API Client
+## HTTP Layer
 
-A typed fetch wrapper at ${B1}src/lib/api/client.ts${B1}:
+A modular HTTP infrastructure at ${B1}src/lib/http/${B1}:
 
 ${B3}typescript
-import { api } from '@/lib/api/client';
+import { http, ApiError, isApiError, setAuthToken } from '@/lib/http';
 
 // GET with query params
-const users = await api.get<User[]>('/users', { params: { page: 1 } });
+const users = await http.get<User[]>('/users', { params: { page: 1 } });
 
-// POST with body
-const user = await api.post<User>('/users', { name: 'Alice' });
+// POST / PATCH / DELETE
+const user   = await http.post<User>('/users', { name: 'Alice' });
+const updated = await http.patch<User>('/users/1', { name: 'Bob' });
+await http.delete('/users/1');
+
+// Typed error handling
+try {
+  await http.get('/protected');
+} catch (err) {
+  if (isApiError(err)) console.error(err.status, err.code);
+}
+
+// Auth token injection (client-side)
+setAuthToken(localStorage.getItem('token'));
+
+// Timeout support
+await http.get('/slow', { timeout: 5000 });
+
+// FormData (multipart — Content-Type set automatically)
+const form = new FormData();
+form.append('file', file);
+await http.post('/upload', form);
 ${B3}
 
-Set ${B1}NEXT_PUBLIC_API_URL${B1} in ${B1}.env.local${B1} to point at your backend.
+Set ${B1}NEXT_PUBLIC_API_URL${B1} in ${B1}.env.local${B1} to point at your backend. Server components use ${B1}API_URL${B1}.
 
 ---
 

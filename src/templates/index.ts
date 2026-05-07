@@ -54,7 +54,11 @@ import {
   typesIndex,
   cnUtil,
   formatUtil,
-  apiClient,
+  httpTypes,
+  httpErrors,
+  httpInterceptors,
+  httpClient,
+  httpIndex,
   useScrollState,
   navigationConstants,
 } from './state-and-utils.js';
@@ -168,9 +172,13 @@ export function getFileMap(projectName: string, opts: ScaffoldOptions): FileMap 
     'src/types/index.ts':  typesIndex,
 
     /* ── Lib ───────────────────────────────────────────────────────────── */
-    'src/lib/utils/cn.ts':     cnUtil,
-    'src/lib/utils/format.ts': formatUtil,
-    'src/lib/api/client.ts':   apiClient,
+    'src/lib/utils/cn.ts':              cnUtil,
+    'src/lib/utils/format.ts':          formatUtil,
+    'src/lib/http/types.ts':            httpTypes,
+    'src/lib/http/errors.ts':           httpErrors,
+    'src/lib/http/interceptors.ts':     httpInterceptors,
+    'src/lib/http/client.ts':           httpClient,
+    'src/lib/http/index.ts':            httpIndex,
 
     /* ── Hooks ─────────────────────────────────────────────────────────── */
     'src/hooks/use-scroll-state.ts': useScrollState,

@@ -166,55 +166,205 @@ export function formatDatetime(date: Date | string): string {
 }
 `;
 
-export const apiClient = `const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+/* ── Modular HTTP layer (src/lib/http/) ───────────────────────────────────── */
 
-interface RequestOptions extends RequestInit {
-  params?: Record<string, string | number | boolean>;
+export const httpTypes = `export type QueryParams = Record<string, string | number | boolean | null | undefined>;
+
+export interface RequestOptions extends Omit<RequestInit, 'body'> {
+  params?: QueryParams;
+  timeout?: number;
+  body?: unknown;
+}
+
+export interface ApiErrorPayload {
+  message?: string;
+  code?: string;
+  details?: unknown;
+}
+
+export interface RequestConfig {
+  url: string;
+  init: RequestInit;
+}
+
+export type RequestInterceptor  = (config: RequestConfig) => RequestConfig | Promise<RequestConfig>;
+export type ResponseInterceptor = (response: Response) => Response | Promise<Response>;
+`;
+
+export const httpErrors = `import type { ApiErrorPayload } from './types';
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string | undefined;
+  readonly details: unknown;
+
+  constructor(message: string, status: number, code?: string, details?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
+
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError;
+}
+
+export async function parseApiError(res: Response): Promise<ApiError> {
+  const payload = await res.json().catch((): ApiErrorPayload => ({}));
+  return new ApiError(
+    payload.message ?? res.statusText,
+    res.status,
+    payload.code,
+    payload.details,
+  );
+}
+`;
+
+export const httpInterceptors = `import type { RequestConfig, RequestInterceptor, ResponseInterceptor } from './types';
+
+const requestInterceptors: RequestInterceptor[]  = [];
+const responseInterceptors: ResponseInterceptor[] = [];
+
+export function registerRequestInterceptor(fn: RequestInterceptor): () => void {
+  requestInterceptors.push(fn);
+  return () => {
+    const i = requestInterceptors.indexOf(fn);
+    if (i !== -1) requestInterceptors.splice(i, 1);
+  };
+}
+
+export function registerResponseInterceptor(fn: ResponseInterceptor): () => void {
+  responseInterceptors.push(fn);
+  return () => {
+    const i = responseInterceptors.indexOf(fn);
+    if (i !== -1) responseInterceptors.splice(i, 1);
+  };
+}
+
+export async function applyRequestInterceptors(config: RequestConfig): Promise<RequestConfig> {
+  let current = config;
+  for (const fn of requestInterceptors) current = await fn(current);
+  return current;
+}
+
+export async function applyResponseInterceptors(response: Response): Promise<Response> {
+  let current = response;
+  for (const fn of responseInterceptors) current = await fn(current);
+  return current;
+}
+
+/* ── Auth token injection ─────────────────────────────────────────────────── */
+
+let authToken: string | null = null;
+
+/** Inject a bearer token into every outgoing request. Call with null to clear. */
+export function setAuthToken(token: string | null): void {
+  authToken = token;
+}
+
+registerRequestInterceptor((config) => {
+  if (!authToken) return config;
+  const headers = new Headers(config.init.headers);
+  headers.set('Authorization', \`Bearer \${authToken}\`);
+  return { ...config, init: { ...config.init, headers } };
+});
+`;
+
+export const httpClient = `import type { RequestOptions, RequestConfig } from './types';
+import { parseApiError } from './errors';
+import { applyRequestInterceptors, applyResponseInterceptors } from './interceptors';
+
+// SSR-safe: server components need an absolute URL; browser can use relative paths.
+const BASE_URL =
+  typeof window === 'undefined'
+    ? (process.env.API_URL ?? 'http://localhost:3000')
+    : (process.env.NEXT_PUBLIC_API_URL ?? '');
+
+function buildUrl(path: string, params?: RequestOptions['params']): string {
+  if (!params) return BASE_URL + path;
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== null && v !== undefined) qs.append(k, String(v));
+  }
+  const query = qs.toString();
+  return query ? \`\${BASE_URL}\${path}?\${query}\` : BASE_URL + path;
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { params, headers, ...init } = options;
+  const { params, timeout, body, headers, ...init } = options;
 
-  let url = BASE_URL + path;
-  if (params) {
-    const query = new URLSearchParams(
-      Object.entries(params).map(([k, v]) => [k, String(v)]),
-    );
-    url += '?' + query.toString();
+  // Skip Content-Type for FormData — browser sets multipart/form-data + boundary automatically.
+  const resolvedHeaders: Record<string, string> = {};
+  if (body !== undefined && !(body instanceof FormData)) {
+    resolvedHeaders['Content-Type'] = 'application/json';
   }
+  if (headers) Object.assign(resolvedHeaders, headers as Record<string, string>);
 
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...headers },
-    ...init,
-  });
+  const controller = new AbortController();
+  const timer = timeout ? setTimeout(() => controller.abort(), timeout) : null;
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw Object.assign(new Error(body?.message ?? res.statusText), {
-      status: res.status,
-      code: body?.code,
-    });
+  let config: RequestConfig = {
+    url: buildUrl(path, params),
+    init: {
+      ...init,
+      headers: resolvedHeaders,
+      body: body instanceof FormData
+        ? body
+        : body !== undefined
+          ? JSON.stringify(body)
+          : undefined,
+      signal: controller.signal,
+    },
+  };
+
+  try {
+    config = await applyRequestInterceptors(config);
+    let response = await fetch(config.url, config.init);
+    response = await applyResponseInterceptors(response);
+
+    if (!response.ok) throw await parseApiError(response);
+
+    if (response.status === 204 || response.headers.get('content-length') === '0') {
+      return undefined as T;
+    }
+
+    return response.json() as Promise<T>;
+  } finally {
+    if (timer !== null) clearTimeout(timer);
   }
-
-  return res.json() as Promise<T>;
 }
 
-export const api = {
-  get:    <T>(path: string, opts?: RequestOptions) =>
+export const http = {
+  get:    <T>(path: string, opts?: Omit<RequestOptions, 'body'>) =>
     request<T>(path, { method: 'GET', ...opts }),
 
   post:   <T>(path: string, body?: unknown, opts?: RequestOptions) =>
-    request<T>(path, { method: 'POST', body: JSON.stringify(body), ...opts }),
+    request<T>(path, { method: 'POST', body, ...opts }),
 
   put:    <T>(path: string, body?: unknown, opts?: RequestOptions) =>
-    request<T>(path, { method: 'PUT', body: JSON.stringify(body), ...opts }),
+    request<T>(path, { method: 'PUT', body, ...opts }),
 
   patch:  <T>(path: string, body?: unknown, opts?: RequestOptions) =>
-    request<T>(path, { method: 'PATCH', body: JSON.stringify(body), ...opts }),
+    request<T>(path, { method: 'PATCH', body, ...opts }),
 
-  delete: <T>(path: string, opts?: RequestOptions) =>
+  delete: <T>(path: string, opts?: Omit<RequestOptions, 'body'>) =>
     request<T>(path, { method: 'DELETE', ...opts }),
 };
+`;
+
+export const httpIndex = `export { http } from './client';
+export { ApiError, isApiError } from './errors';
+export { registerRequestInterceptor, registerResponseInterceptor, setAuthToken } from './interceptors';
+export type {
+  RequestOptions,
+  QueryParams,
+  ApiErrorPayload,
+  RequestConfig,
+  RequestInterceptor,
+  ResponseInterceptor,
+} from './types';
 `;
 
 export const reactQueryProviders = `'use client';
@@ -239,7 +389,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 `;
 
 export const usePostsQuery = `import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api/client';
+import { http } from '@/lib/http';
 
 interface Post {
   id: number;
@@ -250,7 +400,7 @@ interface Post {
 export function usePosts() {
   return useQuery<Post[]>({
     queryKey: ['posts'],
-    queryFn:  () => api.get<Post[]>('/posts'),
+    queryFn:  () => http.get<Post[]>('/posts'),
   });
 }
 `;

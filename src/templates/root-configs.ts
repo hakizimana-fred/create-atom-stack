@@ -124,11 +124,11 @@ fetch-retry-maxtimeout=120000
 network-concurrency=4
 `;
 
-export const envExample = `# API base URL (server-side)
-API_URL=http://localhost:3001
+export const envExample = `# API base URL (server-side — used by Next.js server components and API routes)
+API_URL=http://localhost:3000
 
-# API base URL (client-side)
-NEXT_PUBLIC_API_URL=http://localhost:3001
+# API base URL (client-side — exposed to the browser)
+NEXT_PUBLIC_API_URL=http://localhost:3000
 `;
 
 export const nextEnvDts = `/// <reference types="next" />

@@ -266,11 +266,11 @@ fetch-retry-mintimeout=20000
 fetch-retry-maxtimeout=120000
 network-concurrency=4
 `;
-var envExample = `# API base URL (server-side)
-API_URL=http://localhost:3001
+var envExample = `# API base URL (server-side \u2014 used by Next.js server components and API routes)
+API_URL=http://localhost:3000
 
-# API base URL (client-side)
-NEXT_PUBLIC_API_URL=http://localhost:3001
+# API base URL (client-side \u2014 exposed to the browser)
+NEXT_PUBLIC_API_URL=http://localhost:3000
 `;
 var nextEnvDts = `/// <reference types="next" />
 /// <reference types="next/image-types/global" />
@@ -1007,7 +1007,7 @@ const PROJECT_STRUCTURE = \`src/
 \u251C\u2500\u2500 store/
 \u2502   \u2514\u2500\u2500 ui.store.ts          # zustand: theme, sidebar
 \u251C\u2500\u2500 lib/
-\u2502   \u251C\u2500\u2500 api/client.ts        # typed fetch wrapper
+\u2502   \u251C\u2500\u2500 http/                # client \xB7 errors \xB7 interceptors \xB7 types
 \u2502   \u2514\u2500\u2500 utils/               # cn \xB7 format
 \u251C\u2500\u2500 hooks/
 \u2502   \u2514\u2500\u2500 use-scroll-state.ts
@@ -1257,7 +1257,7 @@ const FILE_TREE = \`my-app/
 \u2502   \u2502   \u2514\u2500\u2500 organisms/          Layout: header, footer
 \u2502   \u251C\u2500\u2500 store/                  Zustand slices (ui.store.ts)
 \u2502   \u251C\u2500\u2500 lib/
-\u2502   \u2502   \u251C\u2500\u2500 api/client.ts       Typed fetch wrapper (get/post/put/patch/delete)
+\u2502   \u2502   \u251C\u2500\u2500 http/               Modular HTTP layer (client \xB7 errors \xB7 interceptors)
 \u2502   \u2502   \u2514\u2500\u2500 utils/              cn \xB7 format helpers
 \u2502   \u251C\u2500\u2500 hooks/                  use-scroll-state
 \u2502   \u251C\u2500\u2500 types/                  Shared TypeScript types
@@ -2491,55 +2491,199 @@ export function formatDatetime(date: Date | string): string {
   return DATETIME_FORMATTER.format(new Date(date));
 }
 `;
-var apiClient = `const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+var httpTypes = `export type QueryParams = Record<string, string | number | boolean | null | undefined>;
 
-interface RequestOptions extends RequestInit {
-  params?: Record<string, string | number | boolean>;
+export interface RequestOptions extends Omit<RequestInit, 'body'> {
+  params?: QueryParams;
+  timeout?: number;
+  body?: unknown;
+}
+
+export interface ApiErrorPayload {
+  message?: string;
+  code?: string;
+  details?: unknown;
+}
+
+export interface RequestConfig {
+  url: string;
+  init: RequestInit;
+}
+
+export type RequestInterceptor  = (config: RequestConfig) => RequestConfig | Promise<RequestConfig>;
+export type ResponseInterceptor = (response: Response) => Response | Promise<Response>;
+`;
+var httpErrors = `import type { ApiErrorPayload } from './types';
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string | undefined;
+  readonly details: unknown;
+
+  constructor(message: string, status: number, code?: string, details?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
+
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError;
+}
+
+export async function parseApiError(res: Response): Promise<ApiError> {
+  const payload = await res.json().catch((): ApiErrorPayload => ({}));
+  return new ApiError(
+    payload.message ?? res.statusText,
+    res.status,
+    payload.code,
+    payload.details,
+  );
+}
+`;
+var httpInterceptors = `import type { RequestConfig, RequestInterceptor, ResponseInterceptor } from './types';
+
+const requestInterceptors: RequestInterceptor[]  = [];
+const responseInterceptors: ResponseInterceptor[] = [];
+
+export function registerRequestInterceptor(fn: RequestInterceptor): () => void {
+  requestInterceptors.push(fn);
+  return () => {
+    const i = requestInterceptors.indexOf(fn);
+    if (i !== -1) requestInterceptors.splice(i, 1);
+  };
+}
+
+export function registerResponseInterceptor(fn: ResponseInterceptor): () => void {
+  responseInterceptors.push(fn);
+  return () => {
+    const i = responseInterceptors.indexOf(fn);
+    if (i !== -1) responseInterceptors.splice(i, 1);
+  };
+}
+
+export async function applyRequestInterceptors(config: RequestConfig): Promise<RequestConfig> {
+  let current = config;
+  for (const fn of requestInterceptors) current = await fn(current);
+  return current;
+}
+
+export async function applyResponseInterceptors(response: Response): Promise<Response> {
+  let current = response;
+  for (const fn of responseInterceptors) current = await fn(current);
+  return current;
+}
+
+/* \u2500\u2500 Auth token injection \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+
+let authToken: string | null = null;
+
+/** Inject a bearer token into every outgoing request. Call with null to clear. */
+export function setAuthToken(token: string | null): void {
+  authToken = token;
+}
+
+registerRequestInterceptor((config) => {
+  if (!authToken) return config;
+  const headers = new Headers(config.init.headers);
+  headers.set('Authorization', \`Bearer \${authToken}\`);
+  return { ...config, init: { ...config.init, headers } };
+});
+`;
+var httpClient = `import type { RequestOptions, RequestConfig } from './types';
+import { parseApiError } from './errors';
+import { applyRequestInterceptors, applyResponseInterceptors } from './interceptors';
+
+// SSR-safe: server components need an absolute URL; browser can use relative paths.
+const BASE_URL =
+  typeof window === 'undefined'
+    ? (process.env.API_URL ?? 'http://localhost:3000')
+    : (process.env.NEXT_PUBLIC_API_URL ?? '');
+
+function buildUrl(path: string, params?: RequestOptions['params']): string {
+  if (!params) return BASE_URL + path;
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== null && v !== undefined) qs.append(k, String(v));
+  }
+  const query = qs.toString();
+  return query ? \`\${BASE_URL}\${path}?\${query}\` : BASE_URL + path;
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { params, headers, ...init } = options;
+  const { params, timeout, body, headers, ...init } = options;
 
-  let url = BASE_URL + path;
-  if (params) {
-    const query = new URLSearchParams(
-      Object.entries(params).map(([k, v]) => [k, String(v)]),
-    );
-    url += '?' + query.toString();
+  // Skip Content-Type for FormData \u2014 browser sets multipart/form-data + boundary automatically.
+  const resolvedHeaders: Record<string, string> = {};
+  if (body !== undefined && !(body instanceof FormData)) {
+    resolvedHeaders['Content-Type'] = 'application/json';
   }
+  if (headers) Object.assign(resolvedHeaders, headers as Record<string, string>);
 
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...headers },
-    ...init,
-  });
+  const controller = new AbortController();
+  const timer = timeout ? setTimeout(() => controller.abort(), timeout) : null;
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw Object.assign(new Error(body?.message ?? res.statusText), {
-      status: res.status,
-      code: body?.code,
-    });
+  let config: RequestConfig = {
+    url: buildUrl(path, params),
+    init: {
+      ...init,
+      headers: resolvedHeaders,
+      body: body instanceof FormData
+        ? body
+        : body !== undefined
+          ? JSON.stringify(body)
+          : undefined,
+      signal: controller.signal,
+    },
+  };
+
+  try {
+    config = await applyRequestInterceptors(config);
+    let response = await fetch(config.url, config.init);
+    response = await applyResponseInterceptors(response);
+
+    if (!response.ok) throw await parseApiError(response);
+
+    if (response.status === 204 || response.headers.get('content-length') === '0') {
+      return undefined as T;
+    }
+
+    return response.json() as Promise<T>;
+  } finally {
+    if (timer !== null) clearTimeout(timer);
   }
-
-  return res.json() as Promise<T>;
 }
 
-export const api = {
-  get:    <T>(path: string, opts?: RequestOptions) =>
+export const http = {
+  get:    <T>(path: string, opts?: Omit<RequestOptions, 'body'>) =>
     request<T>(path, { method: 'GET', ...opts }),
 
   post:   <T>(path: string, body?: unknown, opts?: RequestOptions) =>
-    request<T>(path, { method: 'POST', body: JSON.stringify(body), ...opts }),
+    request<T>(path, { method: 'POST', body, ...opts }),
 
   put:    <T>(path: string, body?: unknown, opts?: RequestOptions) =>
-    request<T>(path, { method: 'PUT', body: JSON.stringify(body), ...opts }),
+    request<T>(path, { method: 'PUT', body, ...opts }),
 
   patch:  <T>(path: string, body?: unknown, opts?: RequestOptions) =>
-    request<T>(path, { method: 'PATCH', body: JSON.stringify(body), ...opts }),
+    request<T>(path, { method: 'PATCH', body, ...opts }),
 
-  delete: <T>(path: string, opts?: RequestOptions) =>
+  delete: <T>(path: string, opts?: Omit<RequestOptions, 'body'>) =>
     request<T>(path, { method: 'DELETE', ...opts }),
 };
+`;
+var httpIndex = `export { http } from './client';
+export { ApiError, isApiError } from './errors';
+export { registerRequestInterceptor, registerResponseInterceptor, setAuthToken } from './interceptors';
+export type {
+  RequestOptions,
+  QueryParams,
+  ApiErrorPayload,
+  RequestConfig,
+  RequestInterceptor,
+  ResponseInterceptor,
+} from './types';
 `;
 var reactQueryProviders = `'use client';
 
@@ -2562,7 +2706,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 }
 `;
 var usePostsQuery = `import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api/client';
+import { http } from '@/lib/http';
 
 interface Post {
   id: number;
@@ -2573,7 +2717,7 @@ interface Post {
 export function usePosts() {
   return useQuery<Post[]>({
     queryKey: ['posts'],
-    queryFn:  () => api.get<Post[]>('/posts'),
+    queryFn:  () => http.get<Post[]>('/posts'),
   });
 }
 `;
@@ -2761,21 +2905,41 @@ Add new stores at ${B1}src/store/<feature>.store.ts${B1}.
 
 ---
 
-## API Client
+## HTTP Layer
 
-A typed fetch wrapper at ${B1}src/lib/api/client.ts${B1}:
+A modular HTTP infrastructure at ${B1}src/lib/http/${B1}:
 
 ${B3}typescript
-import { api } from '@/lib/api/client';
+import { http, ApiError, isApiError, setAuthToken } from '@/lib/http';
 
 // GET with query params
-const users = await api.get<User[]>('/users', { params: { page: 1 } });
+const users = await http.get<User[]>('/users', { params: { page: 1 } });
 
-// POST with body
-const user = await api.post<User>('/users', { name: 'Alice' });
+// POST / PATCH / DELETE
+const user   = await http.post<User>('/users', { name: 'Alice' });
+const updated = await http.patch<User>('/users/1', { name: 'Bob' });
+await http.delete('/users/1');
+
+// Typed error handling
+try {
+  await http.get('/protected');
+} catch (err) {
+  if (isApiError(err)) console.error(err.status, err.code);
+}
+
+// Auth token injection (client-side)
+setAuthToken(localStorage.getItem('token'));
+
+// Timeout support
+await http.get('/slow', { timeout: 5000 });
+
+// FormData (multipart \u2014 Content-Type set automatically)
+const form = new FormData();
+form.append('file', file);
+await http.post('/upload', form);
 ${B3}
 
-Set ${B1}NEXT_PUBLIC_API_URL${B1} in ${B1}.env.local${B1} to point at your backend.
+Set ${B1}NEXT_PUBLIC_API_URL${B1} in ${B1}.env.local${B1} to point at your backend. Server components use ${B1}API_URL${B1}.
 
 ---
 
@@ -3174,7 +3338,11 @@ function getFileMap(projectName, opts) {
     /* ── Lib ───────────────────────────────────────────────────────────── */
     "src/lib/utils/cn.ts": cnUtil,
     "src/lib/utils/format.ts": formatUtil,
-    "src/lib/api/client.ts": apiClient,
+    "src/lib/http/types.ts": httpTypes,
+    "src/lib/http/errors.ts": httpErrors,
+    "src/lib/http/interceptors.ts": httpInterceptors,
+    "src/lib/http/client.ts": httpClient,
+    "src/lib/http/index.ts": httpIndex,
     /* ── Hooks ─────────────────────────────────────────────────────────── */
     "src/hooks/use-scroll-state.ts": useScrollState,
     ...withRxjs ? { "src/hooks/use-observable.ts": useObservable } : {},
@@ -4455,47 +4623,34 @@ var store_default = storeGenerator;
 import path12 from "path";
 
 // src/generator-templates/api.ts
-var REQ_HELPER = `const BASE = process.env.NEXT_PUBLIC_API_URL ?? '/api';
-
-async function req<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(\`\${BASE}\${url}\`, {
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-    ...init,
-  });
-  if (!res.ok) {
-    throw new Error(\`\${init?.method ?? 'GET'} \${url} \u2192 \${res.status} \${res.statusText}\`);
-  }
-  return res.json() as Promise<T>;
-}`;
-function typeImport(camel, pascal, useZod, mode) {
+function buildImports(camel, pascal, useZod, mode) {
+  const httpImport = `import { http } from '@/lib/http';`;
+  if (mode === "custom") return httpImport;
   const source = useZod ? `./${camel}.schemas` : `./${camel}.types`;
-  if (mode === "custom") return "";
   const names = [pascal];
   if (mode === "crud" || mode === "action") names.push(`Create${pascal}`, `Update${pascal}`);
-  return `import type { ${names.join(", ")} } from '${source}';
-
-`;
+  return `${httpImport}
+import type { ${names.join(", ")} } from '${source}';`;
 }
 function crudMethods(camel, pascal) {
   return `export const ${camel}Api = {
-  list:   ()                             => req<${pascal}[]>('/${camel}'),
-  get:    (id: string)                   => req<${pascal}>(\`/${camel}/\${id}\`),
-  create: (body: Create${pascal})        => req<${pascal}>('/${camel}', { method: 'POST',  body: JSON.stringify(body) }),
+  list:   ()                             => http.get<${pascal}[]>('/${camel}'),
+  get:    (id: string)                   => http.get<${pascal}>(\`/${camel}/\${id}\`),
+  create: (body: Create${pascal})        => http.post<${pascal}>('/${camel}', body),
   update: (id: string, body: Update${pascal}) =>
-    req<${pascal}>(\`/${camel}/\${id}\`, { method: 'PATCH', body: JSON.stringify(body) }),
-  remove: (id: string)                   => req<void>(\`/${camel}/\${id}\`, { method: 'DELETE' }),
+    http.patch<${pascal}>(\`/${camel}/\${id}\`, body),
+  remove: (id: string)                   => http.delete<void>(\`/${camel}/\${id}\`),
 } as const;`;
 }
 function queryMethods(camel, pascal) {
   return `export const ${camel}Api = {
-  list: ()             => req<${pascal}[]>('/${camel}'),
-  get:  (id: string)   => req<${pascal}>(\`/${camel}/\${id}\`),
+  list: ()             => http.get<${pascal}[]>('/${camel}'),
+  get:  (id: string)   => http.get<${pascal}>(\`/${camel}/\${id}\`),
 } as const;`;
 }
 function actionMethods(camel, pascal) {
   return `export const ${camel}Api = {
-  execute: (body: Create${pascal}) =>
-    req<${pascal}>('/${camel}', { method: 'POST', body: JSON.stringify(body) }),
+  execute: (body: Create${pascal}) => http.post<${pascal}>('/${camel}', body),
 } as const;`;
 }
 function customMethods(camel) {
@@ -4504,7 +4659,7 @@ function customMethods(camel) {
 } as const;`;
 }
 function apiTs(camel, pascal, mode, useZod) {
-  const imp = typeImport(camel, pascal, useZod, mode);
+  const imports = buildImports(camel, pascal, useZod, mode);
   let methods;
   switch (mode) {
     case "query":
@@ -4519,7 +4674,7 @@ function apiTs(camel, pascal, mode, useZod) {
     default:
       methods = crudMethods(camel, pascal);
   }
-  return `${imp}${REQ_HELPER}
+  return `${imports}
 
 ${methods}
 `;

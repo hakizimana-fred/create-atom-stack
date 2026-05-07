@@ -67,7 +67,7 @@ const PROJECT_STRUCTURE = \`src/
 ├── store/
 │   └── ui.store.ts          # zustand: theme, sidebar
 ├── lib/
-│   ├── api/client.ts        # typed fetch wrapper
+│   ├── http/                # client · errors · interceptors · types
 │   └── utils/               # cn · format
 ├── hooks/
 │   └── use-scroll-state.ts
@@ -319,7 +319,7 @@ const FILE_TREE = \`my-app/
 │   │   └── organisms/          Layout: header, footer
 │   ├── store/                  Zustand slices (ui.store.ts)
 │   ├── lib/
-│   │   ├── api/client.ts       Typed fetch wrapper (get/post/put/patch/delete)
+│   │   ├── http/               Modular HTTP layer (client · errors · interceptors)
 │   │   └── utils/              cn · format helpers
 │   ├── hooks/                  use-scroll-state
 │   ├── types/                  Shared TypeScript types
