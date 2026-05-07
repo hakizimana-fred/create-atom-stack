@@ -1,6 +1,7 @@
 import path from 'path';
 import type { Generator, GeneratorContext, GeneratedFile } from '../../types/generator.js';
-import { apiTs, apiTypesTs, apiSchemasTs, apiIndexTs } from '../../generator-templates/api.js';
+import { apiTs, apiSchemasTs, apiTypesTs, apiIndexTs, type ApiMode } from '../../generator-templates/api.js';
+import { detectZod } from '../../config/project-detector.js';
 
 const apiGenerator: Generator = {
   type: 'api',
@@ -8,13 +9,16 @@ const apiGenerator: Generator = {
 
   generate(ctx: GeneratorContext): GeneratedFile[] {
     const { camelName, pascalName, outDir } = ctx;
-    const cwd = process.cwd();
+    const mode   = (ctx.extra?.mode as ApiMode | undefined) ?? 'crud';
+    const useZod = detectZod();
+    const cwd    = process.cwd();
 
     const files: Array<[string, string]> = [
-      [`${camelName}.api.ts`,     apiTs(camelName, pascalName)],
-      [`${camelName}.types.ts`,   apiTypesTs(pascalName)],
-      [`${camelName}.schemas.ts`, apiSchemasTs(camelName, pascalName)],
-      ['index.ts',                apiIndexTs(camelName, pascalName)],
+      [`${camelName}.api.ts`, apiTs(camelName, pascalName, mode, useZod)],
+      useZod
+        ? [`${camelName}.schemas.ts`, apiSchemasTs(camelName, pascalName)]
+        : [`${camelName}.types.ts`,   apiTypesTs(pascalName)],
+      ['index.ts', apiIndexTs(camelName, pascalName, useZod)],
     ];
 
     return files.map(([name, content]) => {

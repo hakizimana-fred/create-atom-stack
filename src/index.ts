@@ -96,91 +96,100 @@ async function main() {
     console.log();
     p.intro(chalk.bold.cyan('create-atom-stack') + chalk.dim('  Atomic Next.js scaffold'));
 
-    const answers = await p.group(
-      {
-        projectName: () =>
-          p.text({
-            message: 'Project name?',
-            placeholder: 'my-app',
-            validate: validateName,
-          }),
+    /* Step 1: project name */
+    const nameAnswer = await p.text({
+      message: 'Project name?',
+      placeholder: 'my-app',
+      validate: validateName,
+    });
+    if (p.isCancel(nameAnswer)) { p.cancel('Cancelled.'); process.exit(0); }
+    projectName = nameAnswer as string;
 
-        pm: () =>
-          p.select({
-            message: 'Package manager?',
-            options: [
-              { value: 'npm'  as const, label: 'npm' },
-              { value: 'pnpm' as const, label: 'pnpm' },
-              { value: 'yarn' as const, label: 'yarn' },
-              { value: 'bun'  as const, label: 'bun' },
-            ],
-          }),
+    /* Step 2: package manager */
+    const pmAnswer = await p.select<PackageManager>({
+      message: 'Package manager?',
+      options: [
+        { value: 'npm',  label: 'npm' },
+        { value: 'pnpm', label: 'pnpm' },
+        { value: 'yarn', label: 'yarn' },
+        { value: 'bun',  label: 'bun' },
+      ],
+    });
+    if (p.isCancel(pmAnswer)) { p.cancel('Cancelled.'); process.exit(0); }
+    pm = pmAnswer as PackageManager;
 
-        stateManagement: () =>
-          p.select({
-            message: 'State management?',
-            options: [
-              { value: 'zustand'      as const, label: 'Zustand',        hint: 'recommended' },
-              { value: 'jotai'        as const, label: 'Jotai' },
-              { value: 'react-query'  as const, label: 'TanStack Query',  hint: 'server state' },
-              { value: 'none'         as const, label: 'none' },
-            ],
-          }),
+    /* Step 3: defaults fast-path */
+    const useDefaults = await p.confirm({
+      message: 'Use recommended defaults?' +
+        chalk.dim('  (Zustand · no E2E · conventional commits · install now)'),
+      initialValue: true,
+    });
+    if (p.isCancel(useDefaults)) { p.cancel('Cancelled.'); process.exit(0); }
 
-        e2e: () =>
-          p.select({
-            message: 'E2E testing?',
-            options: [
-              { value: 'none'        as const, label: 'none' },
-              { value: 'playwright'  as const, label: 'Playwright', hint: 'recommended' },
-              { value: 'cypress'     as const, label: 'Cypress' },
-            ],
-          }),
+    if (useDefaults) {
+      stateManagement     = 'zustand';
+      e2e                 = 'none';
+      conventionalCommits = true;
+      advancedAddons      = [];
+      skipInstall         = false;
+      noGit               = false;
+    } else {
+      /* Advanced questions */
+      const smAnswer = await p.select<StateManagement>({
+        message: 'State management?',
+        options: [
+          { value: 'zustand',     label: 'Zustand',       hint: 'recommended' },
+          { value: 'jotai',       label: 'Jotai' },
+          { value: 'react-query', label: 'TanStack Query', hint: 'server state' },
+          { value: 'none',        label: 'none' },
+        ],
+      });
+      if (p.isCancel(smAnswer)) { p.cancel('Cancelled.'); process.exit(0); }
+      stateManagement = smAnswer as StateManagement;
 
-        conventionalCommits: () =>
-          p.confirm({
-            message: 'Conventional commits? (husky + commitlint)',
-            initialValue: true,
-          }),
+      const e2eAnswer = await p.select<E2EFramework>({
+        message: 'E2E testing?',
+        options: [
+          { value: 'none',       label: 'none' },
+          { value: 'playwright', label: 'Playwright', hint: 'recommended' },
+          { value: 'cypress',    label: 'Cypress' },
+        ],
+      });
+      if (p.isCancel(e2eAnswer)) { p.cancel('Cancelled.'); process.exit(0); }
+      e2e = e2eAnswer as E2EFramework;
 
-        advancedAddons: () =>
-          p.multiselect<AdvancedAddon>({
-            message: 'Advanced add-ons? (optional — space to select)',
-            options: [
-              { value: 'rxjs'   as const, label: 'RxJS',   hint: 'Observable streams + useObservable hook' },
-              { value: 'xstate' as const, label: 'XState', hint: 'State machines + useMachine integration' },
-            ],
-            required: false,
-          }),
+      const ccAnswer = await p.confirm({
+        message: 'Conventional commits? (husky + commitlint)',
+        initialValue: true,
+      });
+      if (p.isCancel(ccAnswer)) { p.cancel('Cancelled.'); process.exit(0); }
+      conventionalCommits = ccAnswer as boolean;
 
-        skipInstall: () =>
-          p.confirm({
-            message: 'Skip install?',
-            initialValue: false,
-          }),
+      const addonsAnswer = await p.multiselect<AdvancedAddon>({
+        message: 'Advanced add-ons? (optional — space to select)',
+        options: [
+          { value: 'rxjs',   label: 'RxJS',   hint: 'Observable streams + useObservable hook' },
+          { value: 'xstate', label: 'XState', hint: 'State machines + useMachine integration' },
+        ],
+        required: false,
+      });
+      if (p.isCancel(addonsAnswer)) { p.cancel('Cancelled.'); process.exit(0); }
+      advancedAddons = addonsAnswer as AdvancedAddon[];
 
-        noGit: () =>
-          p.confirm({
-            message: 'Skip git init?',
-            initialValue: false,
-          }),
-      },
-      {
-        onCancel: () => {
-          p.cancel('Cancelled.');
-          process.exit(0);
-        },
-      },
-    );
+      const skipInstallAnswer = await p.confirm({
+        message: 'Skip install?',
+        initialValue: false,
+      });
+      if (p.isCancel(skipInstallAnswer)) { p.cancel('Cancelled.'); process.exit(0); }
+      skipInstall = skipInstallAnswer as boolean;
 
-    projectName         = answers.projectName as string;
-    pm                  = answers.pm as PackageManager;
-    stateManagement     = answers.stateManagement as StateManagement;
-    e2e                 = answers.e2e as E2EFramework;
-    conventionalCommits = answers.conventionalCommits as boolean;
-    advancedAddons      = answers.advancedAddons as AdvancedAddon[];
-    skipInstall         = answers.skipInstall as boolean;
-    noGit               = answers.noGit as boolean;
+      const noGitAnswer = await p.confirm({
+        message: 'Skip git init?',
+        initialValue: false,
+      });
+      if (p.isCancel(noGitAnswer)) { p.cancel('Cancelled.'); process.exit(0); }
+      noGit = noGitAnswer as boolean;
+    }
 
     p.outro(chalk.dim('Scaffolding…'));
     console.log();

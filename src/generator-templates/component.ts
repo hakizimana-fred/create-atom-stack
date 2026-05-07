@@ -1,6 +1,23 @@
-/** Generic component template — no element opinions. The developer picks the HTML tag. */
+/** Generic component template — no element opinions. */
 
-export function componentTsx(pascal: string, kebab: string): string {
+export function componentTsx(pascal: string, _kebab: string): string {
+  return `import type { FC, HTMLAttributes } from 'react';
+
+export interface ${pascal}Props extends HTMLAttributes<HTMLDivElement> {}
+
+const ${pascal}: FC<${pascal}Props> = ({ className, children, ...props }) => {
+  return (
+    <div className={className} {...props}>
+      {children}
+    </div>
+  );
+};
+
+export default ${pascal};
+`;
+}
+
+export function componentVariantsTsx(pascal: string, kebab: string): string {
   return `import type { FC, HTMLAttributes } from 'react';
 import { cn } from '@/lib/utils/cn';
 
@@ -59,13 +76,27 @@ describe('${pascal}', () => {
     render(<${pascal} data-testid="el">test</${pascal}>);
     expect(screen.getByTestId('el')).toBeInTheDocument();
   });
-
-  it('sets secondary variant attribute', () => {
-    const { container } = render(<${pascal} variant="secondary">test</${pascal}>);
-    expect(container.firstChild).toHaveAttribute('data-variant', 'secondary');
-  });
 });
 `;
+}
+
+export function componentStoryTsx(pascal: string, storyTitle: string, withVariants = false): string {
+  const secondaryStory = withVariants
+    ? `\nexport const Secondary: Story = { args: { variant: 'secondary' } };\n`
+    : '';
+  return `import type { Meta, StoryObj } from '@storybook/react';
+import ${pascal} from './${pascal}';
+
+const meta: Meta<typeof ${pascal}> = {
+  title: '${storyTitle}',
+  component: ${pascal},
+};
+export default meta;
+
+type Story = StoryObj<typeof ${pascal}>;
+
+export const Default: Story = {};
+${secondaryStory}`;
 }
 
 export function componentIndexTs(pascal: string): string {

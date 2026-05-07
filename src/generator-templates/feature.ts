@@ -1,8 +1,7 @@
-export function featureIndexTs(pascal: string): string {
-  return `// ${pascal} feature — public API
-// Export only what consumers outside this feature need.
-export * from './types';
-`;
+export function featureIndexTs(pascal: string, extraDirs: string[] = []): string {
+  const typeReexport = extraDirs.includes('types') ? `export * from './types';\n` : '';
+  const placeholder  = typeReexport ? '' : 'export {};\n';
+  return `// ${pascal} feature — public API\n${placeholder}${typeReexport}`;
 }
 
 export function featureTypesIndexTs(pascal: string): string {

@@ -7,11 +7,20 @@ const LEVEL_COMMENT: Record<AtomicLevel, string> = {
   template:  '// Template — structural layout; handles slot composition and spacing',
 };
 
-export function atomicComponentTsx(pascal: string, kebab: string, level: AtomicLevel): string {
-  const isTemplate = level === 'template';
+const STORY_FOLDER: Record<AtomicLevel, string> = {
+  atom:     'Atoms',
+  molecule: 'Molecules',
+  organism: 'Organisms',
+  template: 'Templates',
+};
 
-  // Templates use PropsWithChildren; all others extend HTMLAttributes for max flexibility
-  if (isTemplate) {
+export function atomicComponentTsx(
+  pascal: string,
+  kebab: string,
+  level: AtomicLevel,
+  withVariants = false,
+): string {
+  if (level === 'template') {
     return `import type { FC, PropsWithChildren } from 'react';
 import { cn } from '@/lib/utils/cn';
 
@@ -32,7 +41,8 @@ export default ${pascal};
 `;
   }
 
-  return `import type { FC, HTMLAttributes } from 'react';
+  if (withVariants) {
+    return `import type { FC, HTMLAttributes } from 'react';
 import { cn } from '@/lib/utils/cn';
 
 ${LEVEL_COMMENT[level]}
@@ -52,6 +62,23 @@ const ${pascal}: FC<${pascal}Props> = ({
       className={cn('${kebab}', className)}
       {...props}
     >
+      {children}
+    </div>
+  );
+};
+
+export default ${pascal};
+`;
+  }
+
+  return `import type { FC, HTMLAttributes } from 'react';
+
+${LEVEL_COMMENT[level]}
+export interface ${pascal}Props extends HTMLAttributes<HTMLDivElement> {}
+
+const ${pascal}: FC<${pascal}Props> = ({ className, children, ...props }) => {
+  return (
+    <div className={className} {...props}>
       {children}
     </div>
   );
@@ -93,6 +120,26 @@ describe('${pascal}', () => {
   });
 });
 `;
+}
+
+export function atomicStoryTsx(pascal: string, level: AtomicLevel, withVariants = false): string {
+  const folder = STORY_FOLDER[level];
+  const secondaryStory = withVariants
+    ? `\nexport const Secondary: Story = { args: { variant: 'secondary' } };\n`
+    : '';
+  return `import type { Meta, StoryObj } from '@storybook/react';
+import ${pascal} from './${pascal}';
+
+const meta: Meta<typeof ${pascal}> = {
+  title: '${folder}/${pascal}',
+  component: ${pascal},
+};
+export default meta;
+
+type Story = StoryObj<typeof ${pascal}>;
+
+export const Default: Story = {};
+${secondaryStory}`;
 }
 
 export function atomicIndexTs(pascal: string): string {

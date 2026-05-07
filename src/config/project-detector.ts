@@ -55,6 +55,13 @@ export function detectPackageManager(cwd = process.cwd()): PackageManager {
   return 'npm';
 }
 
+/** Returns true when zod is installed in the project. */
+export function detectZod(cwd = process.cwd()): boolean {
+  const pkg = readPackageJson(cwd);
+  if (!pkg) return false;
+  return allDeps(pkg).has('zod');
+}
+
 /** Returns 'app' | 'pages' by inspecting the directory tree. */
 export function detectRouter(cwd = process.cwd()): 'app' | 'pages' | null {
   if (fs.existsSync(path.join(cwd, 'src', 'app')))   return 'app';

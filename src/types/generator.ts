@@ -33,6 +33,8 @@ export interface GeneratorContext {
   dry: boolean;
   /** Overwrite existing files without prompting */
   force: boolean;
+  /** Generator-specific options passed via flags or interactive prompts */
+  extra?: Record<string, unknown>;
 }
 
 export interface GeneratedFile {
@@ -55,4 +57,5 @@ export interface AddCommandOptions {
   dir?: string;
   dry: boolean;
   force: boolean;
+  extra?: Record<string, unknown>;
 }

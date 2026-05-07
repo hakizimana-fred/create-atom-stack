@@ -6,6 +6,11 @@ import { writeGeneratedFiles } from '../utils/file-utils.js';
 import { toPascalCase, toCamelCase, toKebabCase, getBaseName, resolveCwd } from '../utils/path-utils.js';
 import { log } from '../utils/logger.js';
 import type { GeneratorType, AddCommandOptions } from '../types/generator.js';
+import type { ApiMode } from '../generator-templates/api.js';
+
+type FeatureSubdir = 'components' | 'hooks' | 'services' | 'store' | 'utils' | 'types';
+
+const FEATURE_SUBDIRS: FeatureSubdir[] = ['components', 'hooks', 'services', 'store', 'utils', 'types'];
 
 /* ── Argument parsing ────────────────────────────────────────────────────── */
 
@@ -15,28 +20,47 @@ function parseAddArgs(argv: string[]): AddCommandOptions {
   let name: string | undefined;
   let dry   = false;
   let force = false;
+  const extra: Record<string, unknown> = {};
 
   for (const arg of argv) {
     if (arg.startsWith('--dir=')) {
       dir = arg.slice('--dir='.length);
     } else if (arg.startsWith('--name=')) {
-      // --name="dashboard/[id]" avoids zsh glob expansion on brackets
       name = arg.slice('--name='.length);
     } else if (arg === '--dry') {
       dry = true;
     } else if (arg === '--force') {
       force = true;
+    } else if (arg.startsWith('--with=')) {
+      extra.with = arg.slice('--with='.length).split(',').map((s) => s.trim()).filter(Boolean);
+    } else if (arg === '--with-test') {
+      extra.withTest = true;
+    } else if (arg === '--with-styles') {
+      extra.withStyles = true;
+    } else if (arg === '--with-story') {
+      extra.withStory = true;
+    } else if (arg === '--variants') {
+      extra.withVariants = true;
+    } else if (arg === '--crud') {
+      extra.mode = 'crud';
+    } else if (arg === '--action') {
+      extra.mode = 'action';
+    } else if (arg === '--query') {
+      extra.mode = 'query';
+    } else if (arg === '--custom') {
+      extra.mode = 'custom';
     } else if (!arg.startsWith('--')) {
       positional.push(arg);
     }
   }
 
   return {
-    type: positional[0] as GeneratorType | undefined,
-    name: name ?? positional[1],
+    type:  positional[0] as GeneratorType | undefined,
+    name:  name ?? positional[1],
     dir,
     dry,
     force,
+    extra: Object.keys(extra).length > 0 ? extra : undefined,
   };
 }
 
@@ -59,7 +83,22 @@ export function printAddUsage() {
   console.log('    ' + chalk.cyan('store')     + chalk.dim('       State store (auto-detects SM)   src/store/'));
   console.log('    ' + chalk.cyan('api')       + chalk.dim('         API module + types + schemas   src/api/'));
   console.log();
-  console.log(chalk.dim('  Options:'));
+  console.log(chalk.dim('  Component flags (atom / molecule / organism / template / component):'));
+  console.log('    ' + chalk.dim('--variants       Add variant prop + data-variant attribute'));
+  console.log('    ' + chalk.dim('--with-test      Generate a .test.tsx file'));
+  console.log('    ' + chalk.dim('--with-styles    Generate a .styles.ts file'));
+  console.log('    ' + chalk.dim('--with-story     Generate a .stories.tsx file'));
+  console.log();
+  console.log(chalk.dim('  Feature flags:'));
+  console.log('    ' + chalk.dim('--with=<dirs>    Comma-separated subdirs to scaffold (components,hooks,store,services,utils,types)'));
+  console.log();
+  console.log(chalk.dim('  API flags:'));
+  console.log('    ' + chalk.dim('--crud           Full CRUD (list, get, create, update, remove)   [default]'));
+  console.log('    ' + chalk.dim('--query          Read-only (list, get)'));
+  console.log('    ' + chalk.dim('--action         Single mutation (execute)'));
+  console.log('    ' + chalk.dim('--custom         Empty shell — fill in your own methods'));
+  console.log();
+  console.log(chalk.dim('  General options:'));
   console.log('    ' + chalk.dim('--dry           Show what would be generated without writing files'));
   console.log('    ' + chalk.dim('--force         Overwrite existing files without prompting'));
   console.log('    ' + chalk.dim('--dir=<path>    Override the default output directory'));
@@ -67,17 +106,19 @@ export function printAddUsage() {
   console.log();
   console.log(chalk.dim('  Examples:'));
   console.log('    npx create-atom-stack add atom Button');
-  console.log('    npx create-atom-stack add molecule SearchBar');
+  console.log('    npx create-atom-stack add atom Button --variants --with-test');
+  console.log('    npx create-atom-stack add molecule SearchBar --with-story');
   console.log('    npx create-atom-stack add organism Navbar');
   console.log('    npx create-atom-stack add template DashboardLayout');
   console.log('    npx create-atom-stack add page dashboard/reports');
   console.log('    npx create-atom-stack add page "dashboard/[id]"                   ' + chalk.dim('← quoted'));
   console.log('    npx create-atom-stack add page --name="dashboard/[id]"            ' + chalk.dim('← flag form (no quoting needed in zsh)'));
+  console.log('    npx create-atom-stack add feature billing                         ' + chalk.dim('← minimal index.ts only'));
+  console.log('    npx create-atom-stack add feature billing --with=components,hooks  ' + chalk.dim('← with subdirs'));
   console.log('    npx create-atom-stack add store auth                ' + chalk.dim('← auto-detects Zustand/RTK/Jotai/MobX'));
-  console.log('    npx create-atom-stack add api users');
-  console.log('    npx create-atom-stack add atom Button '             + chalk.dim('--dry'));
-  console.log('    npx create-atom-stack add page admin/users '        + chalk.dim('--dir src/modules'));
-  console.log('    npx create-atom-stack add api payments '            + chalk.dim('--force'));
+  console.log('    npx create-atom-stack add api users                 ' + chalk.dim('← prompted for mode, auto-detects Zod'));
+  console.log('    npx create-atom-stack add api users --crud');
+  console.log('    npx create-atom-stack add api payments --action');
   console.log();
   console.log(chalk.dim('  Shell note:'));
   console.log('    Dynamic route segments contain brackets: ' + chalk.yellow('[id]'));
@@ -133,6 +174,32 @@ async function promptName(type: GeneratorType): Promise<string> {
   return result as string;
 }
 
+async function promptFeatureDirs(): Promise<FeatureSubdir[]> {
+  const result = await p.multiselect<FeatureSubdir>({
+    message: 'Scaffold extra subdirectories? ' + chalk.dim('(optional — space to toggle)'),
+    options: FEATURE_SUBDIRS.map((d) => ({ value: d, label: d })),
+    required: false,
+  });
+
+  if (p.isCancel(result)) { p.cancel('Cancelled.'); process.exit(0); }
+  return result as FeatureSubdir[];
+}
+
+async function promptApiMode(): Promise<ApiMode> {
+  const result = await p.select<ApiMode>({
+    message: 'API mode?',
+    options: [
+      { value: 'crud',   label: 'crud',   hint: 'list · get · create · update · remove' },
+      { value: 'query',  label: 'query',  hint: 'list · get  (read-only)' },
+      { value: 'action', label: 'action', hint: 'single mutation (execute)' },
+      { value: 'custom', label: 'custom', hint: 'empty shell — fill in your own methods' },
+    ],
+  });
+
+  if (p.isCancel(result)) { p.cancel('Cancelled.'); process.exit(0); }
+  return result;
+}
+
 /* ── Import hint ─────────────────────────────────────────────────────────── */
 
 function importHint(type: GeneratorType, pascal: string, camel: string, outDir: string): string {
@@ -149,7 +216,8 @@ function importHint(type: GeneratorType, pascal: string, camel: string, outDir: 
     case 'page':
       return `// File-system route — no manual import needed.`;
     case 'feature':
-      return `import { } from '${alias}';`;
+      return chalk.dim(`# Add exports to src/${rel}/index.ts, then:`) +
+             `\n    import { ... } from '${alias}';`;
     case 'store':
       return `import { use${pascal}Store } from '${alias}';  // Zustand\n` +
              `    import { ${camel}Actions } from '${alias}';           // RTK\n` +
@@ -167,9 +235,18 @@ export async function runAddCommand(argv: string[]): Promise<void> {
     return;
   }
 
-  let { type, name, dir, dry, force } = parseAddArgs(argv);
+  let { type, name, dir, dry, force, extra } = parseAddArgs(argv);
 
-  const isTTY = Boolean(process.stdin.isTTY);
+  const isTTY   = Boolean(process.stdin.isTTY);
+  let introShown = false;
+
+  const showIntro = () => {
+    if (!introShown) {
+      console.log();
+      p.intro(chalk.bold.cyan('create-atom-stack') + chalk.dim('  add generator'));
+      introShown = true;
+    }
+  };
 
   /* Resolve type ---------------------------------------------------------- */
   if (!type || !isValidGeneratorType(type)) {
@@ -177,8 +254,7 @@ export async function runAddCommand(argv: string[]): Promise<void> {
       log.error(`Generator type is required. Valid types: ${GENERATOR_TYPES.join(', ')}`);
       process.exit(1);
     }
-    console.log();
-    p.intro(chalk.bold.cyan('create-atom-stack') + chalk.dim('  add generator'));
+    showIntro();
     type = await promptType();
   }
 
@@ -188,8 +264,26 @@ export async function runAddCommand(argv: string[]): Promise<void> {
       log.error('Name is required.');
       process.exit(1);
     }
-    if (!type) { console.log(); p.intro(chalk.bold.cyan('create-atom-stack') + chalk.dim('  add generator')); }
+    showIntro();
     name = await promptName(type);
+  }
+
+  /* Pre-generation prompts ------------------------------------------------ */
+
+  // Feature: ask for optional subdirs (unless --with=... was passed)
+  if (type === 'feature' && !extra?.with && isTTY) {
+    showIntro();
+    const dirs = await promptFeatureDirs();
+    if (dirs.length > 0) {
+      extra = { ...extra, with: dirs };
+    }
+  }
+
+  // API: ask for mode (unless --crud/--action/--query/--custom was passed)
+  if (type === 'api' && !extra?.mode && isTTY) {
+    showIntro();
+    const mode = await promptApiMode();
+    extra = { ...extra, mode };
   }
 
   /* Build context --------------------------------------------------------- */
@@ -202,7 +296,7 @@ export async function runAddCommand(argv: string[]): Promise<void> {
   const baseDir = resolveCwd(dir ?? generator.defaultBaseDir);
   const outDir  = path.join(baseDir, name);
 
-  const ctx = { rawName: name, pascalName, camelName, kebabName, outDir, dry, force };
+  const ctx = { rawName: name, pascalName, camelName, kebabName, outDir, dry, force, extra };
 
   /* Generate files (may be async — store resolves SM first) --------------- */
   const typeLabel = chalk.bold.cyan(type);
