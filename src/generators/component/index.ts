@@ -12,11 +12,11 @@ const componentGenerator: Generator = {
   defaultBaseDir: 'src/components',
 
   generate(ctx: GeneratorContext): GeneratedFile[] {
-    const { pascalName, outDir } = ctx;
+    const { pascalName, kebabName, outDir } = ctx;
     const cwd = process.cwd();
 
     const files: Array<[string, string]> = [
-      [`${pascalName}.tsx`,       componentTsx(pascalName)],
+      [`${pascalName}.tsx`,       componentTsx(pascalName, kebabName)],
       [`${pascalName}.styles.ts`, componentStylesTs(pascalName)],
       [`${pascalName}.test.tsx`,  componentTestTsx(pascalName)],
       ['index.ts',                componentIndexTs(pascalName)],

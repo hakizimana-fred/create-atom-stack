@@ -1,28 +1,44 @@
-export type GeneratorType = 'component' | 'page' | 'feature' | 'store' | 'api';
+export type GeneratorType =
+  | 'component'
+  | 'atom'
+  | 'molecule'
+  | 'organism'
+  | 'template'
+  | 'page'
+  | 'feature'
+  | 'store'
+  | 'api';
+
+export type AtomicLevel = 'atom' | 'molecule' | 'organism' | 'template';
+
+export type SupportedStateManagement =
+  | 'zustand'
+  | 'redux-toolkit'
+  | 'jotai'
+  | 'mobx'
+  | 'none';
 
 export interface GeneratorContext {
-  /** Raw name as given by user (e.g. "Button" or "dashboard/reports") */
+  /** Raw name as given by user (e.g. "Button" or "dashboard/[id]") */
   rawName: string;
-  /** PascalCase of the last path segment (e.g. "Button", "Reports") */
+  /** PascalCase of the last path segment */
   pascalName: string;
-  /** camelCase of the last path segment (e.g. "button", "reports") */
+  /** camelCase of the last path segment */
   camelName: string;
-  /** kebab-case of the last path segment (e.g. "button", "user-profile") */
+  /** kebab-case of the last path segment */
   kebabName: string;
-  /** Absolute resolved output directory for this generator */
+  /** Absolute resolved output directory */
   outDir: string;
-  /** Whether to skip writing and only log what would be created */
+  /** Skip writing, only log what would be created */
   dry: boolean;
-  /** Whether to overwrite existing files without prompting */
+  /** Overwrite existing files without prompting */
   force: boolean;
 }
 
 export interface GeneratedFile {
-  /** Absolute path of the file to write */
   fullPath: string;
-  /** Path relative to process.cwd() for display */
+  /** Relative to process.cwd() — shown to the user */
   relativePath: string;
-  /** File contents */
   content: string;
 }
 
@@ -30,7 +46,7 @@ export interface Generator {
   type: GeneratorType;
   /** Default base directory (relative to cwd) */
   defaultBaseDir: string;
-  generate(ctx: GeneratorContext): GeneratedFile[];
+  generate(ctx: GeneratorContext): GeneratedFile[] | Promise<GeneratedFile[]>;
 }
 
 export interface AddCommandOptions {

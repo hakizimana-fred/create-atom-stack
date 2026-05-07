@@ -12,7 +12,7 @@ import type { GeneratorType, AddCommandOptions } from '../types/generator.js';
 function parseAddArgs(argv: string[]): AddCommandOptions {
   const positional: string[] = [];
   let dir: string | undefined;
-  let dry  = false;
+  let dry   = false;
   let force = false;
 
   for (const arg of argv) {
@@ -27,24 +27,33 @@ function parseAddArgs(argv: string[]): AddCommandOptions {
     }
   }
 
-  const type = positional[0] as GeneratorType | undefined;
-  const name = positional[1];
-
-  return { type, name, dir, dry, force };
+  return {
+    type:  positional[0] as GeneratorType | undefined,
+    name:  positional[1],
+    dir,
+    dry,
+    force,
+  };
 }
 
-/* ── Help text ───────────────────────────────────────────────────────────── */
+/* ── Help ────────────────────────────────────────────────────────────────── */
 
 export function printAddUsage() {
   console.log();
   console.log(chalk.bold('  create-atom-stack add') + chalk.dim(' <type> <name> [options]'));
   console.log();
-  console.log(chalk.dim('  Types:'));
-  console.log('    ' + chalk.cyan('component') + chalk.dim('    React component with types, test, and styles'));
-  console.log('    ' + chalk.cyan('page')      + chalk.dim('        Next.js App Router page with loading state'));
-  console.log('    ' + chalk.cyan('feature')   + chalk.dim('     Feature module with full directory structure'));
-  console.log('    ' + chalk.cyan('store')     + chalk.dim('       Zustand store with types'));
-  console.log('    ' + chalk.cyan('api')       + chalk.dim('         API module with types and Zod schemas'));
+  console.log(chalk.dim('  Atomic Design generators:'));
+  console.log('    ' + chalk.cyan('atom')      + chalk.dim('        Smallest reusable unit        src/components/atoms/'));
+  console.log('    ' + chalk.cyan('molecule')  + chalk.dim('    Composed of atoms              src/components/molecules/'));
+  console.log('    ' + chalk.cyan('organism')  + chalk.dim('    Self-contained section         src/components/organisms/'));
+  console.log('    ' + chalk.cyan('template')  + chalk.dim('    Page layout / structural       src/components/templates/'));
+  console.log('    ' + chalk.cyan('component') + chalk.dim('   Generic — not Atomic Design     src/components/'));
+  console.log();
+  console.log(chalk.dim('  App generators:'));
+  console.log('    ' + chalk.cyan('page')      + chalk.dim('        Next.js App Router page          src/app/'));
+  console.log('    ' + chalk.cyan('feature')   + chalk.dim('     Feature-first module dir        src/features/'));
+  console.log('    ' + chalk.cyan('store')     + chalk.dim('       State store (auto-detects SM)   src/store/'));
+  console.log('    ' + chalk.cyan('api')       + chalk.dim('         API module + types + schemas   src/api/'));
   console.log();
   console.log(chalk.dim('  Options:'));
   console.log('    ' + chalk.dim('--dry         Show what would be generated without writing files'));
@@ -52,14 +61,22 @@ export function printAddUsage() {
   console.log('    ' + chalk.dim('--dir=<path>  Override the default output directory'));
   console.log();
   console.log(chalk.dim('  Examples:'));
-  console.log('    npx create-atom-stack add component Button');
+  console.log('    npx create-atom-stack add atom Button');
+  console.log('    npx create-atom-stack add molecule SearchBar');
+  console.log('    npx create-atom-stack add organism Navbar');
+  console.log('    npx create-atom-stack add template DashboardLayout');
   console.log('    npx create-atom-stack add page dashboard/reports');
-  console.log('    npx create-atom-stack add feature billing');
-  console.log('    npx create-atom-stack add store auth');
+  console.log('    npx create-atom-stack add page "dashboard/[id]"     ' + chalk.dim('← quote dynamic routes'));
+  console.log('    npx create-atom-stack add store auth                ' + chalk.dim('← auto-detects Zustand/RTK/Jotai/MobX'));
   console.log('    npx create-atom-stack add api users');
-  console.log('    npx create-atom-stack add component Button ' + chalk.dim('--dry'));
-  console.log('    npx create-atom-stack add page admin/users ' + chalk.dim('--dir src/modules'));
-  console.log('    npx create-atom-stack add api payments '     + chalk.dim('--force'));
+  console.log('    npx create-atom-stack add atom Button '             + chalk.dim('--dry'));
+  console.log('    npx create-atom-stack add page admin/users '        + chalk.dim('--dir src/modules'));
+  console.log('    npx create-atom-stack add api payments '            + chalk.dim('--force'));
+  console.log();
+  console.log(chalk.dim('  Shell note:'));
+  console.log('    Dynamic route segments contain brackets: ' + chalk.yellow('[id]'));
+  console.log('    zsh/bash treat brackets as glob chars — always quote them:');
+  console.log('      ' + chalk.cyan('npx create-atom-stack add page "dashboard/[id]"'));
   console.log();
 }
 
@@ -69,25 +86,29 @@ async function promptType(): Promise<GeneratorType> {
   const result = await p.select<GeneratorType>({
     message: 'What do you want to generate?',
     options: [
-      { value: 'component', label: 'component', hint: 'React component + test + styles' },
+      { value: 'atom',      label: 'atom',      hint: 'Atomic Design — smallest unit' },
+      { value: 'molecule',  label: 'molecule',  hint: 'Atomic Design — composed of atoms' },
+      { value: 'organism',  label: 'organism',  hint: 'Atomic Design — self-contained section' },
+      { value: 'template',  label: 'template',  hint: 'Atomic Design — page layout' },
+      { value: 'component', label: 'component', hint: 'Generic component' },
       { value: 'page',      label: 'page',      hint: 'Next.js App Router page' },
       { value: 'feature',   label: 'feature',   hint: 'Feature module directory' },
-      { value: 'store',     label: 'store',     hint: 'Zustand store + types' },
+      { value: 'store',     label: 'store',     hint: 'State store (auto-detects SM)' },
       { value: 'api',       label: 'api',       hint: 'API module + types + schemas' },
     ],
   });
 
-  if (p.isCancel(result)) {
-    p.cancel('Cancelled.');
-    process.exit(0);
-  }
-
+  if (p.isCancel(result)) { p.cancel('Cancelled.'); process.exit(0); }
   return result;
 }
 
 async function promptName(type: GeneratorType): Promise<string> {
-  const hints: Record<GeneratorType, string> = {
+  const placeholders: Record<GeneratorType, string> = {
     component: 'Button',
+    atom:      'Button',
+    molecule:  'SearchBar',
+    organism:  'Navbar',
+    template:  'DashboardLayout',
     page:      'dashboard/reports',
     feature:   'billing',
     store:     'auth',
@@ -96,34 +117,41 @@ async function promptName(type: GeneratorType): Promise<string> {
 
   const result = await p.text({
     message: `Name for the ${type}?`,
-    placeholder: hints[type],
+    placeholder: placeholders[type],
     validate: (v) => (v.trim() ? undefined : 'Name is required.'),
   });
 
-  if (p.isCancel(result)) {
-    p.cancel('Cancelled.');
-    process.exit(0);
-  }
-
+  if (p.isCancel(result)) { p.cancel('Cancelled.'); process.exit(0); }
   return result as string;
 }
 
-/* ── Import hint shown after generation ─────────────────────────────────── */
+/* ── Import hint ─────────────────────────────────────────────────────────── */
 
-function importHint(type: GeneratorType, pascal: string, outDir: string): string {
-  const rel = path.relative(resolveCwd('src'), outDir).replace(/\\/g, '/');
+function importHint(type: GeneratorType, pascal: string, camel: string, outDir: string): string {
+  const rel   = path.relative(resolveCwd('src'), outDir).replace(/\\/g, '/');
   const alias = `@/${rel}`;
 
   switch (type) {
-    case 'component': return `import ${pascal} from '${alias}';`;
-    case 'page':      return `// File-system route — no import needed.`;
-    case 'feature':   return `import { } from '${alias}';`;
-    case 'store':     return `import { use${pascal}Store } from '${alias}';`;
-    case 'api':       return `import { ${pascal.toLowerCase()}Api } from '${alias}';`;
+    case 'component':
+    case 'atom':
+    case 'molecule':
+    case 'organism':
+    case 'template':
+      return `import ${pascal} from '${alias}';`;
+    case 'page':
+      return `// File-system route — no manual import needed.`;
+    case 'feature':
+      return `import { } from '${alias}';`;
+    case 'store':
+      return `import { use${pascal}Store } from '${alias}';  // Zustand\n` +
+             `    import { ${camel}Actions } from '${alias}';           // RTK\n` +
+             `    import { ${camel}Atom } from '${alias}';              // Jotai`;
+    case 'api':
+      return `import { ${camel}Api } from '${alias}';`;
   }
 }
 
-/* ── Main entry point ────────────────────────────────────────────────────── */
+/* ── Main ────────────────────────────────────────────────────────────────── */
 
 export async function runAddCommand(argv: string[]): Promise<void> {
   if (argv.includes('--help') || argv[0] === '--help') {
@@ -157,8 +185,8 @@ export async function runAddCommand(argv: string[]): Promise<void> {
   }
 
   /* Build context --------------------------------------------------------- */
-  const generator = getGenerator(type);
-  const baseName  = getBaseName(name);
+  const generator  = getGenerator(type);
+  const baseName   = getBaseName(name);
   const pascalName = toPascalCase(baseName);
   const camelName  = toCamelCase(baseName);
   const kebabName  = toKebabCase(baseName);
@@ -168,9 +196,7 @@ export async function runAddCommand(argv: string[]): Promise<void> {
 
   const ctx = { rawName: name, pascalName, camelName, kebabName, outDir, dry, force };
 
-  /* Generate files -------------------------------------------------------- */
-  const files = generator.generate(ctx);
-
+  /* Generate files (may be async — store resolves SM first) --------------- */
   const typeLabel = chalk.bold.cyan(type);
   const nameLabel = chalk.bold(name);
 
@@ -179,6 +205,8 @@ export async function runAddCommand(argv: string[]): Promise<void> {
   } else {
     log.section(`Generating ${typeLabel} ${nameLabel}`);
   }
+
+  const files = await Promise.resolve(generator.generate(ctx));
 
   const { created, skipped, overwritten } = await writeGeneratedFiles(files, { dry, force });
 
@@ -191,13 +219,13 @@ export async function runAddCommand(argv: string[]): Promise<void> {
   }
 
   const parts: string[] = [];
-  if (created)    parts.push(chalk.green(`${created} created`));
+  if (created)     parts.push(chalk.green(`${created} created`));
   if (overwritten) parts.push(chalk.blue(`${overwritten} overwritten`));
-  if (skipped)    parts.push(chalk.yellow(`${skipped} skipped`));
+  if (skipped)     parts.push(chalk.yellow(`${skipped} skipped`));
 
   log.success(`Done! ${parts.join(', ')}`);
   console.log();
   console.log('  ' + chalk.dim('Import:'));
-  console.log('    ' + chalk.cyan(importHint(type, pascalName, outDir)));
+  console.log('    ' + chalk.cyan(importHint(type, pascalName, camelName, outDir)));
   console.log();
 }

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 // src/index.ts
-import * as p3 from "@clack/prompts";
-import chalk5 from "chalk";
+import * as p4 from "@clack/prompts";
+import chalk8 from "chalk";
 import ora from "ora";
 
 // src/create.ts
@@ -3393,45 +3393,36 @@ function printDone(projectName, pm, stateManagement, e2e, conventionalCommits, a
 }
 
 // src/commands/add.ts
-import path9 from "path";
-import * as p2 from "@clack/prompts";
-import chalk4 from "chalk";
+import path15 from "path";
+import * as p3 from "@clack/prompts";
+import chalk7 from "chalk";
 
 // src/generators/component/index.ts
 import path2 from "path";
 
 // src/generator-templates/component.ts
-function componentTsx(pascal) {
-  return `import type { FC } from 'react';
+function componentTsx(pascal, kebab) {
+  return `import type { FC, HTMLAttributes } from 'react';
 import { cn } from '@/lib/utils/cn';
-import { ${pascal}Styles } from './${pascal}.styles';
 
-export interface ${pascal}Props {
-  children?: React.ReactNode;
-  className?: string;
-  variant?: 'primary' | 'secondary' | 'ghost';
-  size?: 'sm' | 'md' | 'lg';
-  disabled?: boolean;
-  onClick?: () => void;
+export interface ${pascal}Props extends HTMLAttributes<HTMLDivElement> {
+  variant?: 'default' | 'secondary';
 }
 
 const ${pascal}: FC<${pascal}Props> = ({
-  children,
   className,
-  variant = 'primary',
-  size = 'md',
-  disabled = false,
-  onClick,
+  variant = 'default',
+  children,
+  ...props
 }) => {
   return (
-    <button
-      type="button"
-      className={cn(${pascal}Styles.base, ${pascal}Styles[variant], ${pascal}Styles[size], className)}
-      onClick={onClick}
-      disabled={disabled}
+    <div
+      data-variant={variant}
+      className={cn('${kebab}', className)}
+      {...props}
     >
       {children}
-    </button>
+    </div>
   );
 };
 
@@ -3440,42 +3431,37 @@ export default ${pascal};
 }
 function componentStylesTs(pascal) {
   return `export const ${pascal}Styles = {
-  base: 'inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
-  primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
-  secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-  ghost: 'hover:bg-accent hover:text-accent-foreground',
-  sm: 'h-8 px-3 text-xs',
-  md: 'h-10 px-4 py-2 text-sm',
-  lg: 'h-11 px-8 text-base',
+  root: '',
+  variants: {
+    default:   '',
+    secondary: '',
+  },
 } as const;
 `;
 }
 function componentTestTsx(pascal) {
-  return `import { render, screen, fireEvent } from '@testing-library/react';
+  return `import { render, screen } from '@testing-library/react';
 import ${pascal} from './${pascal}';
 
 describe('${pascal}', () => {
   it('renders children', () => {
-    render(<${pascal}>Click me</${pascal}>);
-    expect(screen.getByRole('button')).toHaveTextContent('Click me');
+    render(<${pascal}>content</${pascal}>);
+    expect(screen.getByText('content')).toBeInTheDocument();
   });
 
-  it('calls onClick when clicked', () => {
-    const handleClick = jest.fn();
-    render(<${pascal} onClick={handleClick}>Click</${pascal}>);
-    fireEvent.click(screen.getByRole('button'));
-    expect(handleClick).toHaveBeenCalledTimes(1);
+  it('applies custom className', () => {
+    const { container } = render(<${pascal} className="custom">test</${pascal}>);
+    expect(container.firstChild).toHaveClass('custom');
   });
 
-  it('does not trigger onClick when disabled', () => {
-    const handleClick = jest.fn();
-    render(<${pascal} onClick={handleClick} disabled>Click</${pascal}>);
-    expect(screen.getByRole('button')).toBeDisabled();
+  it('forwards additional props', () => {
+    render(<${pascal} data-testid="el">test</${pascal}>);
+    expect(screen.getByTestId('el')).toBeInTheDocument();
   });
 
-  it('applies variant classes', () => {
-    const { container } = render(<${pascal} variant="secondary">Content</${pascal}>);
-    expect(container.firstChild).toHaveClass('bg-secondary');
+  it('sets secondary variant attribute', () => {
+    const { container } = render(<${pascal} variant="secondary">test</${pascal}>);
+    expect(container.firstChild).toHaveAttribute('data-variant', 'secondary');
   });
 });
 `;
@@ -3491,10 +3477,10 @@ var componentGenerator = {
   type: "component",
   defaultBaseDir: "src/components",
   generate(ctx) {
-    const { pascalName, outDir } = ctx;
+    const { pascalName, kebabName, outDir } = ctx;
     const cwd = process.cwd();
     const files = [
-      [`${pascalName}.tsx`, componentTsx(pascalName)],
+      [`${pascalName}.tsx`, componentTsx(pascalName, kebabName)],
       [`${pascalName}.styles.ts`, componentStylesTs(pascalName)],
       [`${pascalName}.test.tsx`, componentTestTsx(pascalName)],
       ["index.ts", componentIndexTs(pascalName)]
@@ -3507,12 +3493,241 @@ var componentGenerator = {
 };
 var component_default = componentGenerator;
 
-// src/generators/page/index.ts
+// src/generators/atom/index.ts
 import path3 from "path";
 
+// src/generator-templates/atomic.ts
+var LEVEL_COMMENT = {
+  atom: "// Atom \u2014 smallest reusable unit; no composed sub-components",
+  molecule: "// Molecule \u2014 composes atoms into a focused, single-purpose unit",
+  organism: "// Organism \u2014 self-contained section composed of molecules and atoms",
+  template: "// Template \u2014 structural layout; handles slot composition and spacing"
+};
+function atomicComponentTsx(pascal, kebab, level) {
+  const isTemplate = level === "template";
+  if (isTemplate) {
+    return `import type { FC, PropsWithChildren } from 'react';
+import { cn } from '@/lib/utils/cn';
+
+${LEVEL_COMMENT[level]}
+export interface ${pascal}Props extends PropsWithChildren {
+  className?: string;
+}
+
+const ${pascal}: FC<${pascal}Props> = ({ className, children }) => {
+  return (
+    <div className={cn('${kebab}', className)}>
+      {children}
+    </div>
+  );
+};
+
+export default ${pascal};
+`;
+  }
+  return `import type { FC, HTMLAttributes } from 'react';
+import { cn } from '@/lib/utils/cn';
+
+${LEVEL_COMMENT[level]}
+export interface ${pascal}Props extends HTMLAttributes<HTMLDivElement> {
+  variant?: 'default' | 'secondary';
+}
+
+const ${pascal}: FC<${pascal}Props> = ({
+  className,
+  variant = 'default',
+  children,
+  ...props
+}) => {
+  return (
+    <div
+      data-variant={variant}
+      className={cn('${kebab}', className)}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+};
+
+export default ${pascal};
+`;
+}
+function atomicStylesTs(pascal) {
+  return `export const ${pascal}Styles = {
+  root: '',
+  variants: {
+    default:   '',
+    secondary: '',
+  },
+} as const;
+`;
+}
+function atomicTestTsx(pascal) {
+  return `import { render, screen } from '@testing-library/react';
+import ${pascal} from './${pascal}';
+
+describe('${pascal}', () => {
+  it('renders children', () => {
+    render(<${pascal}>content</${pascal}>);
+    expect(screen.getByText('content')).toBeInTheDocument();
+  });
+
+  it('applies custom className', () => {
+    const { container } = render(<${pascal} className="custom">test</${pascal}>);
+    expect(container.firstChild).toHaveClass('custom');
+  });
+
+  it('forwards props to root element', () => {
+    render(<${pascal} data-testid="el">test</${pascal}>);
+    expect(screen.getByTestId('el')).toBeInTheDocument();
+  });
+});
+`;
+}
+function atomicIndexTs(pascal) {
+  return `export { default } from './${pascal}';
+export type { ${pascal}Props } from './${pascal}';
+`;
+}
+
+// src/generators/atom/index.ts
+var atomGenerator = {
+  type: "atom",
+  defaultBaseDir: "src/components/atoms",
+  generate(ctx) {
+    const { pascalName, kebabName, outDir } = ctx;
+    const cwd = process.cwd();
+    const files = [
+      [`${pascalName}.tsx`, atomicComponentTsx(pascalName, kebabName, "atom")],
+      [`${pascalName}.styles.ts`, atomicStylesTs(pascalName)],
+      [`${pascalName}.test.tsx`, atomicTestTsx(pascalName)],
+      ["index.ts", atomicIndexTs(pascalName)]
+    ];
+    return files.map(([name, content]) => {
+      const fullPath = path3.join(outDir, name);
+      return { fullPath, relativePath: path3.relative(cwd, fullPath), content };
+    });
+  }
+};
+var atom_default = atomGenerator;
+
+// src/generators/molecule/index.ts
+import path4 from "path";
+var moleculeGenerator = {
+  type: "molecule",
+  defaultBaseDir: "src/components/molecules",
+  generate(ctx) {
+    const { pascalName, kebabName, outDir } = ctx;
+    const cwd = process.cwd();
+    const files = [
+      [`${pascalName}.tsx`, atomicComponentTsx(pascalName, kebabName, "molecule")],
+      [`${pascalName}.styles.ts`, atomicStylesTs(pascalName)],
+      [`${pascalName}.test.tsx`, atomicTestTsx(pascalName)],
+      ["index.ts", atomicIndexTs(pascalName)]
+    ];
+    return files.map(([name, content]) => {
+      const fullPath = path4.join(outDir, name);
+      return { fullPath, relativePath: path4.relative(cwd, fullPath), content };
+    });
+  }
+};
+var molecule_default = moleculeGenerator;
+
+// src/generators/organism/index.ts
+import path5 from "path";
+var organismGenerator = {
+  type: "organism",
+  defaultBaseDir: "src/components/organisms",
+  generate(ctx) {
+    const { pascalName, kebabName, outDir } = ctx;
+    const cwd = process.cwd();
+    const files = [
+      [`${pascalName}.tsx`, atomicComponentTsx(pascalName, kebabName, "organism")],
+      [`${pascalName}.styles.ts`, atomicStylesTs(pascalName)],
+      [`${pascalName}.test.tsx`, atomicTestTsx(pascalName)],
+      ["index.ts", atomicIndexTs(pascalName)]
+    ];
+    return files.map(([name, content]) => {
+      const fullPath = path5.join(outDir, name);
+      return { fullPath, relativePath: path5.relative(cwd, fullPath), content };
+    });
+  }
+};
+var organism_default = organismGenerator;
+
+// src/generators/template/index.ts
+import path6 from "path";
+var templateGenerator = {
+  type: "template",
+  defaultBaseDir: "src/components/templates",
+  generate(ctx) {
+    const { pascalName, kebabName, outDir } = ctx;
+    const cwd = process.cwd();
+    const files = [
+      [`${pascalName}.tsx`, atomicComponentTsx(pascalName, kebabName, "template")],
+      [`${pascalName}.styles.ts`, atomicStylesTs(pascalName)],
+      [`${pascalName}.test.tsx`, atomicTestTsx(pascalName)],
+      ["index.ts", atomicIndexTs(pascalName)]
+    ];
+    return files.map(([name, content]) => {
+      const fullPath = path6.join(outDir, name);
+      return { fullPath, relativePath: path6.relative(cwd, fullPath), content };
+    });
+  }
+};
+var template_default = templateGenerator;
+
+// src/generators/page/index.ts
+import path7 from "path";
+
+// src/parsers/route-parser.ts
+function parseSegment(seg) {
+  if (/^\(.+\)$/.test(seg)) {
+    return { raw: seg, kind: "group", name: seg.slice(1, -1) };
+  }
+  if (/^\[\[\.\.\..+\]\]$/.test(seg)) {
+    const name = seg.slice(5, -2);
+    return { raw: seg, kind: "optional-catch-all", name };
+  }
+  if (/^\[\.\.\..+\]$/.test(seg)) {
+    const name = seg.slice(4, -1);
+    return { raw: seg, kind: "catch-all", name };
+  }
+  if (/^\[.+\]$/.test(seg)) {
+    const name = seg.slice(1, -1);
+    return { raw: seg, kind: "dynamic", name };
+  }
+  return { raw: seg, kind: "static", name: seg };
+}
+function parseRoute(rawInput) {
+  const rawPath = rawInput.trim().replace(/\\/g, "/").replace(/^\/|\/$/g, "");
+  const parts = rawPath.split("/").filter(Boolean);
+  const segments = parts.map(parseSegment);
+  const meaningfulSegs = segments.filter((s) => s.kind !== "group");
+  const last = meaningfulSegs[meaningfulSegs.length - 1] ?? segments[segments.length - 1];
+  const componentName = toPascal(last.name);
+  const titleParts = segments.filter((s) => s.kind !== "group").map((s) => s.name.charAt(0).toUpperCase() + s.name.slice(1));
+  const pageTitle = titleParts.join(" ");
+  const dynamicParams = segments.filter((s) => s.kind !== "static" && s.kind !== "group").map((s) => ({
+    name: s.name,
+    tsType: s.kind === "optional-catch-all" ? "string[] | undefined" : s.kind === "catch-all" ? "string[]" : "string"
+  }));
+  return {
+    rawPath,
+    outputPath: rawPath,
+    componentName,
+    pageTitle,
+    isDynamic: dynamicParams.length > 0,
+    dynamicParams
+  };
+}
+function toPascal(s) {
+  return s.replace(/[-_](.)/g, (_, c) => c.toUpperCase()).replace(/^(.)/, (_, c) => c.toUpperCase());
+}
+
 // src/generator-templates/page.ts
-function pageTsx(pascal, routeSegment) {
-  const title = routeSegment.split("/").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(" ");
+function staticPageTsx(pascal, title) {
   return `import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -3531,10 +3746,50 @@ export default function ${pascal}Page() {
 }
 `;
 }
+function buildParamsType(params) {
+  const fields = params.map((p5) => `    ${p5.name}: ${p5.tsType};`).join("\n");
+  return `type Params = {
+  params: Promise<{
+${fields}
+  }>;
+};`;
+}
+function buildParamDestructure(params) {
+  const names = params.map((p5) => p5.name).join(", ");
+  return `const { ${names} } = await params;`;
+}
+function dynamicPageTsx(pascal, title, params) {
+  const firstParam = params[0];
+  const firstIsArray = firstParam.tsType.includes("[]");
+  const exampleUsage = firstIsArray ? `<p>Path: {${firstParam.name}${firstParam.tsType.includes("undefined") ? `?.join('/') ?? 'index'` : `.join('/')`}}</p>` : `<p>ID: {${firstParam.name}}</p>`;
+  return `import type { Metadata } from 'next';
+
+${buildParamsType(params)}
+
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
+  ${buildParamDestructure(params)}
+  return { title: \`${title} \u2014 \${${firstParam.name}${firstIsArray ? "?.[0]" : ""}}\` };
+}
+
+export default async function ${pascal}Page({ params }: Params) {
+  ${buildParamDestructure(params)}
+
+  return (
+    <main className="container mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold tracking-tight">${title}</h1>
+      ${exampleUsage}
+    </main>
+  );
+}
+`;
+}
 function loadingTsx(pascal) {
   return `export default function ${pascal}Loading() {
   return (
-    <div className="flex items-center justify-center min-h-[400px]" aria-label="Loading">
+    <div
+      className="flex items-center justify-center min-h-[400px]"
+      aria-label="Loading"
+    >
       <div className="h-8 w-8 animate-spin rounded-full border-4 border-muted border-t-primary" />
     </div>
   );
@@ -3545,29 +3800,62 @@ function pageIndexTs(pascal) {
   return `export { default as ${pascal}Page } from './page';
 `;
 }
+function buildPageTsx(route) {
+  return route.isDynamic ? dynamicPageTsx(route.componentName, route.pageTitle, route.dynamicParams) : staticPageTsx(route.componentName, route.pageTitle);
+}
+
+// src/utils/logger.ts
+import chalk2 from "chalk";
+var P = "  ";
+var log = {
+  info: (msg) => console.log(P + chalk2.cyan("\u2139") + " " + msg),
+  success: (msg) => console.log(P + chalk2.green("\u2713") + " " + chalk2.green(msg)),
+  warn: (msg) => console.log(P + chalk2.yellow("\u26A0") + " " + chalk2.yellow(msg)),
+  error: (msg) => console.error(P + chalk2.red("\u2717") + " " + chalk2.red(msg)),
+  blank: () => console.log(),
+  section: (msg) => {
+    console.log();
+    console.log(P + chalk2.bold(msg));
+  },
+  file: (action, filePath) => {
+    const icon = { create: chalk2.green("+"), skip: chalk2.yellow("\u2013"), overwrite: chalk2.blue("\u21BA") }[action];
+    const color = { create: chalk2.green, skip: chalk2.yellow, overwrite: chalk2.blue }[action];
+    console.log(P + "  " + icon + " " + color(filePath));
+  },
+  dryFile: (filePath) => {
+    console.log(P + "  " + chalk2.dim("[dry]") + " " + chalk2.dim(filePath));
+  }
+};
 
 // src/generators/page/index.ts
+import chalk3 from "chalk";
 var pageGenerator = {
   type: "page",
   defaultBaseDir: "src/app",
   generate(ctx) {
-    const { pascalName, rawName: rawName2, outDir } = ctx;
+    const { rawName: rawName2, outDir } = ctx;
     const cwd = process.cwd();
+    const route = parseRoute(rawName2);
+    if (route.isDynamic) {
+      log.info(
+        chalk3.dim("Dynamic route detected \u2014 if you see shell errors, quote the path: ") + chalk3.cyan(`"${rawName2}"`)
+      );
+    }
     const files = [
-      ["page.tsx", pageTsx(pascalName, rawName2)],
-      ["loading.tsx", loadingTsx(pascalName)],
-      ["index.ts", pageIndexTs(pascalName)]
+      ["page.tsx", buildPageTsx(route)],
+      ["loading.tsx", loadingTsx(route.componentName)],
+      ["index.ts", pageIndexTs(route.componentName)]
     ];
     return files.map(([name, content]) => {
-      const fullPath = path3.join(outDir, name);
-      return { fullPath, relativePath: path3.relative(cwd, fullPath), content };
+      const fullPath = path7.join(outDir, name);
+      return { fullPath, relativePath: path7.relative(cwd, fullPath), content };
     });
   }
 };
 var page_default = pageGenerator;
 
 // src/generators/feature/index.ts
-import path4 from "path";
+import path8 from "path";
 
 // src/generator-templates/feature.ts
 function featureIndexTs(pascal) {
@@ -3604,8 +3892,8 @@ var featureGenerator = {
     const cwd = process.cwd();
     const files = [];
     const add = (rel, content) => {
-      const fullPath = path4.join(outDir, rel);
-      files.push({ fullPath, relativePath: path4.relative(cwd, fullPath), content });
+      const fullPath = path8.join(outDir, rel);
+      files.push({ fullPath, relativePath: path8.relative(cwd, fullPath), content });
     };
     add("index.ts", featureIndexTs(pascalName));
     add("types/index.ts", featureTypesIndexTs(pascalName));
@@ -3618,11 +3906,102 @@ var featureGenerator = {
 var feature_default = featureGenerator;
 
 // src/generators/store/index.ts
-import path5 from "path";
+import path11 from "path";
 
-// src/generator-templates/store.ts
-function storeTs(camel, pascal) {
-  return `import { create } from 'zustand';
+// src/resolvers/state-management.ts
+import * as p from "@clack/prompts";
+import chalk4 from "chalk";
+
+// src/config/atom-config.ts
+import fs2 from "fs";
+import path9 from "path";
+var CONFIG_FILE = "atom.config.json";
+function readAtomConfig(cwd = process.cwd()) {
+  const configPath = path9.join(cwd, CONFIG_FILE);
+  if (!fs2.existsSync(configPath)) return null;
+  try {
+    return JSON.parse(fs2.readFileSync(configPath, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+function writeAtomConfig(config, cwd = process.cwd()) {
+  const configPath = path9.join(cwd, CONFIG_FILE);
+  fs2.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+}
+function patchAtomConfig(updates, cwd = process.cwd()) {
+  const existing = readAtomConfig(cwd) ?? {};
+  writeAtomConfig({ ...existing, ...updates }, cwd);
+}
+
+// src/config/project-detector.ts
+import fs3 from "fs";
+import path10 from "path";
+function readPackageJson(cwd) {
+  const p5 = path10.join(cwd, "package.json");
+  if (!fs3.existsSync(p5)) return null;
+  try {
+    return JSON.parse(fs3.readFileSync(p5, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+function allDeps(pkg) {
+  return /* @__PURE__ */ new Set([
+    ...Object.keys(pkg.dependencies ?? {}),
+    ...Object.keys(pkg.devDependencies ?? {})
+  ]);
+}
+function detectStateManagement(cwd = process.cwd()) {
+  const pkg = readPackageJson(cwd);
+  if (!pkg) return null;
+  const deps = allDeps(pkg);
+  if (deps.has("zustand")) return "zustand";
+  if (deps.has("@reduxjs/toolkit")) return "redux-toolkit";
+  if (deps.has("jotai")) return "jotai";
+  if (deps.has("mobx")) return "mobx";
+  return null;
+}
+
+// src/resolvers/state-management.ts
+async function resolveStateManagement() {
+  const config = readAtomConfig();
+  if (config?.stateManagement && config.stateManagement !== "none") {
+    return config.stateManagement;
+  }
+  const detected = detectStateManagement();
+  if (detected) {
+    patchAtomConfig({ stateManagement: detected });
+    return detected;
+  }
+  const isTTY = Boolean(process.stdin.isTTY);
+  if (!isTTY) {
+    log.warn("No state management detected \u2014 defaulting to Zustand.");
+    return "zustand";
+  }
+  log.blank();
+  log.warn("No state management detected in this project.");
+  const result = await p.select({
+    message: chalk4.bold("Which state management solution do you want to use?"),
+    options: [
+      { value: "zustand", label: "Zustand", hint: "lightweight \u2014 recommended" },
+      { value: "redux-toolkit", label: "Redux Toolkit", hint: "scalable \u2014 enterprise" },
+      { value: "jotai", label: "Jotai", hint: "atomic \u2014 minimal" },
+      { value: "mobx", label: "MobX", hint: "reactive \u2014 OOP-friendly" }
+    ]
+  });
+  if (p.isCancel(result)) {
+    p.cancel("Cancelled.");
+    process.exit(0);
+  }
+  patchAtomConfig({ stateManagement: result });
+  return result;
+}
+
+// src/generators/store/adapters/zustand.ts
+function zustandAdapter(camel, pascal) {
+  return {
+    [`${camel}.store.ts`]: `import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import type { ${pascal}State, ${pascal}Actions } from './${camel}.types';
 
@@ -3638,64 +4017,238 @@ export const use${pascal}Store = create<${pascal}Store>()(
     persist(
       (set) => ({
         ...initialState,
-
-        setLoading: (isLoading) =>
-          set({ isLoading }, false, '${camel}/setLoading'),
-
-        setError: (error) =>
-          set({ error }, false, '${camel}/setError'),
-
-        reset: () =>
-          set(initialState, false, '${camel}/reset'),
+        setLoading: (isLoading) => set({ isLoading }, false, '${camel}/setLoading'),
+        setError:   (error)     => set({ error },     false, '${camel}/setError'),
+        reset:      ()          => set(initialState,  false, '${camel}/reset'),
       }),
       { name: '${camel}-store' },
     ),
     { name: '${pascal}Store' },
   ),
 );
-`;
-}
-function storeTypesTs(pascal) {
-  return `export interface ${pascal}State {
+`,
+    [`${camel}.types.ts`]: `export interface ${pascal}State {
   isLoading: boolean;
   error: string | null;
 }
 
 export interface ${pascal}Actions {
   setLoading: (isLoading: boolean) => void;
-  setError: (error: string | null) => void;
-  reset: () => void;
+  setError:   (error: string | null) => void;
+  reset:      () => void;
 }
-`;
-}
-function storeIndexTs(camel, pascal) {
-  return `export { use${pascal}Store } from './${camel}.store';
+`,
+    ["index.ts"]: `export { use${pascal}Store } from './${camel}.store';
 export type { ${pascal}State, ${pascal}Actions } from './${camel}.types';
-`;
+`
+  };
+}
+
+// src/generators/store/adapters/redux-toolkit.ts
+function reduxToolkitAdapter(camel, pascal) {
+  return {
+    [`${camel}.slice.ts`]: `import { createSlice, createAsyncThunk, type PayloadAction } from '@reduxjs/toolkit';
+import type { ${pascal}State } from './${camel}.types';
+
+const initialState: ${pascal}State = {
+  isLoading: false,
+  error: null,
+};
+
+export const fetch${pascal} = createAsyncThunk(
+  '${camel}/fetch',
+  async (_: void, { rejectWithValue }) => {
+    try {
+      // TODO: replace with real API call
+      return {};
+    } catch (err) {
+      return rejectWithValue((err as Error).message);
+    }
+  },
+);
+
+export const ${camel}Slice = createSlice({
+  name: '${camel}',
+  initialState,
+  reducers: {
+    setLoading: (state, action: PayloadAction<boolean>) => {
+      state.isLoading = action.payload;
+    },
+    setError: (state, action: PayloadAction<string | null>) => {
+      state.error = action.payload;
+    },
+    reset: (state) => {
+      Object.assign(state, initialState);
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetch${pascal}.pending,  (state) => { state.isLoading = true;  state.error = null; })
+      .addCase(fetch${pascal}.rejected, (state, { payload }) => {
+        state.isLoading = false;
+        state.error = payload as string;
+      })
+      .addCase(fetch${pascal}.fulfilled, (state) => { state.isLoading = false; });
+  },
+});
+
+export const ${camel}Reducer  = ${camel}Slice.reducer;
+export const ${camel}Actions  = ${camel}Slice.actions;
+`,
+    [`${camel}.types.ts`]: `export interface ${pascal}State {
+  isLoading: boolean;
+  error: string | null;
+}
+`,
+    ["index.ts"]: `export { ${camel}Reducer, ${camel}Actions, fetch${pascal} } from './${camel}.slice';
+export type { ${pascal}State } from './${camel}.types';
+`
+  };
+}
+
+// src/generators/store/adapters/jotai.ts
+function jotaiAdapter(camel, pascal) {
+  return {
+    [`${camel}.atoms.ts`]: `import { atom } from 'jotai';
+import { atomWithStorage } from 'jotai/utils';
+import type { ${pascal}State } from './${camel}.types';
+
+const defaultState: ${pascal}State = {
+  isLoading: false,
+  error: null,
+};
+
+/** Persistent atom \u2014 survives page refresh via localStorage. */
+export const ${camel}Atom = atomWithStorage<${pascal}State>('${camel}', defaultState);
+
+/** Derived loading atom. */
+export const ${camel}LoadingAtom = atom(
+  (get) => get(${camel}Atom).isLoading,
+  (_get, set, isLoading: boolean) =>
+    set(${camel}Atom, (prev) => ({ ...prev, isLoading })),
+);
+
+/** Derived error atom. */
+export const ${camel}ErrorAtom = atom(
+  (get) => get(${camel}Atom).error,
+  (_get, set, error: string | null) =>
+    set(${camel}Atom, (prev) => ({ ...prev, error })),
+);
+
+/** Reset atom to its default state. */
+export const reset${pascal}Atom = atom(null, (_get, set) => {
+  set(${camel}Atom, defaultState);
+});
+`,
+    [`${camel}.types.ts`]: `export interface ${pascal}State {
+  isLoading: boolean;
+  error: string | null;
+}
+`,
+    ["index.ts"]: `export {
+  ${camel}Atom,
+  ${camel}LoadingAtom,
+  ${camel}ErrorAtom,
+  reset${pascal}Atom,
+} from './${camel}.atoms';
+export type { ${pascal}State } from './${camel}.types';
+`
+  };
+}
+
+// src/generators/store/adapters/mobx.ts
+function mobxAdapter(camel, pascal) {
+  return {
+    [`${camel}.store.ts`]: `import { makeAutoObservable, runInAction } from 'mobx';
+import type { I${pascal}Store } from './${camel}.types';
+
+class ${pascal}Store implements I${pascal}Store {
+  isLoading = false;
+  error: string | null = null;
+
+  constructor() {
+    makeAutoObservable(this);
+  }
+
+  setLoading(isLoading: boolean) {
+    this.isLoading = isLoading;
+  }
+
+  setError(error: string | null) {
+    this.error = error;
+  }
+
+  reset() {
+    runInAction(() => {
+      this.isLoading = false;
+      this.error = null;
+    });
+  }
+
+  async fetchData() {
+    runInAction(() => { this.isLoading = true; this.error = null; });
+    try {
+      // TODO: replace with real API call
+      runInAction(() => { this.isLoading = false; });
+    } catch (err) {
+      runInAction(() => {
+        this.isLoading = false;
+        this.error = (err as Error).message;
+      });
+    }
+  }
+}
+
+export const ${camel}Store = new ${pascal}Store();
+`,
+    [`${camel}.types.ts`]: `export interface I${pascal}Store {
+  isLoading: boolean;
+  error: string | null;
+  setLoading(isLoading: boolean): void;
+  setError(error: string | null): void;
+  reset(): void;
+}
+`,
+    ["index.ts"]: `export { ${camel}Store } from './${camel}.store';
+export type { I${pascal}Store } from './${camel}.types';
+`
+  };
+}
+
+// src/generators/store/adapters/index.ts
+var ADAPTERS = {
+  "zustand": zustandAdapter,
+  "redux-toolkit": reduxToolkitAdapter,
+  "jotai": jotaiAdapter,
+  "mobx": mobxAdapter
+};
+function getStoreAdapter(sm) {
+  if (sm === "none" || !(sm in ADAPTERS)) return zustandAdapter;
+  return ADAPTERS[sm];
 }
 
 // src/generators/store/index.ts
+import chalk5 from "chalk";
 var storeGenerator = {
   type: "store",
   defaultBaseDir: "src/store",
-  generate(ctx) {
+  async generate(ctx) {
     const { camelName, pascalName, outDir } = ctx;
     const cwd = process.cwd();
-    const files = [
-      [`${camelName}.store.ts`, storeTs(camelName, pascalName)],
-      [`${camelName}.types.ts`, storeTypesTs(pascalName)],
-      ["index.ts", storeIndexTs(camelName, pascalName)]
-    ];
-    return files.map(([name, content]) => {
-      const fullPath = path5.join(outDir, name);
-      return { fullPath, relativePath: path5.relative(cwd, fullPath), content };
+    const sm = await resolveStateManagement();
+    log.info(chalk5.dim(`Using ${chalk5.white(sm)} adapter`));
+    const adapter = getStoreAdapter(sm);
+    const fileMap = adapter(camelName, pascalName);
+    return Object.entries(fileMap).map(([name, content]) => {
+      const fullPath = path11.join(outDir, name);
+      return { fullPath, relativePath: path11.relative(cwd, fullPath), content };
     });
   }
 };
 var store_default = storeGenerator;
 
 // src/generators/api/index.ts
-import path6 from "path";
+import path12 from "path";
 
 // src/generator-templates/api.ts
 function apiTs(camel, pascal) {
@@ -3772,8 +4325,8 @@ var apiGenerator = {
       ["index.ts", apiIndexTs(camelName, pascalName)]
     ];
     return files.map(([name, content]) => {
-      const fullPath = path6.join(outDir, name);
-      return { fullPath, relativePath: path6.relative(cwd, fullPath), content };
+      const fullPath = path12.join(outDir, name);
+      return { fullPath, relativePath: path12.relative(cwd, fullPath), content };
     });
   }
 };
@@ -3782,6 +4335,10 @@ var api_default = apiGenerator;
 // src/generators/registry.ts
 var REGISTRY = /* @__PURE__ */ new Map([
   ["component", component_default],
+  ["atom", atom_default],
+  ["molecule", molecule_default],
+  ["organism", organism_default],
+  ["template", template_default],
   ["page", page_default],
   ["feature", feature_default],
   ["store", store_default],
@@ -3798,37 +4355,12 @@ function isValidGeneratorType(value) {
 }
 
 // src/utils/file-utils.ts
-import fs2 from "fs";
-import path7 from "path";
-import * as p from "@clack/prompts";
-import chalk3 from "chalk";
-
-// src/utils/logger.ts
-import chalk2 from "chalk";
-var P = "  ";
-var log = {
-  info: (msg) => console.log(P + chalk2.cyan("\u2139") + " " + msg),
-  success: (msg) => console.log(P + chalk2.green("\u2713") + " " + chalk2.green(msg)),
-  warn: (msg) => console.log(P + chalk2.yellow("\u26A0") + " " + chalk2.yellow(msg)),
-  error: (msg) => console.error(P + chalk2.red("\u2717") + " " + chalk2.red(msg)),
-  blank: () => console.log(),
-  section: (msg) => {
-    console.log();
-    console.log(P + chalk2.bold(msg));
-  },
-  file: (action, filePath) => {
-    const icon = { create: chalk2.green("+"), skip: chalk2.yellow("\u2013"), overwrite: chalk2.blue("\u21BA") }[action];
-    const color = { create: chalk2.green, skip: chalk2.yellow, overwrite: chalk2.blue }[action];
-    console.log(P + "  " + icon + " " + color(filePath));
-  },
-  dryFile: (filePath) => {
-    console.log(P + "  " + chalk2.dim("[dry]") + " " + chalk2.dim(filePath));
-  }
-};
-
-// src/utils/file-utils.ts
+import fs4 from "fs";
+import path13 from "path";
+import * as p2 from "@clack/prompts";
+import chalk6 from "chalk";
 function fileExists(filePath) {
-  return fs2.existsSync(filePath);
+  return fs4.existsSync(filePath);
 }
 async function writeGeneratedFiles(files, { dry, force }) {
   let created = 0;
@@ -3848,18 +4380,18 @@ async function writeGeneratedFiles(files, { dry, force }) {
         skipped++;
         continue;
       }
-      const answer = await p.confirm({
-        message: chalk3.yellow(`${file.relativePath} already exists. Overwrite?`),
+      const answer = await p2.confirm({
+        message: chalk6.yellow(`${file.relativePath} already exists. Overwrite?`),
         initialValue: false
       });
-      if (p.isCancel(answer) || !answer) {
+      if (p2.isCancel(answer) || !answer) {
         log.file("skip", file.relativePath);
         skipped++;
         continue;
       }
     }
-    fs2.mkdirSync(path7.dirname(file.fullPath), { recursive: true });
-    fs2.writeFileSync(file.fullPath, file.content, "utf-8");
+    fs4.mkdirSync(path13.dirname(file.fullPath), { recursive: true });
+    fs4.writeFileSync(file.fullPath, file.content, "utf-8");
     if (exists) {
       log.file("overwrite", file.relativePath);
       overwritten++;
@@ -3872,7 +4404,7 @@ async function writeGeneratedFiles(files, { dry, force }) {
 }
 
 // src/utils/path-utils.ts
-import path8 from "path";
+import path14 from "path";
 function toPascalCase(str) {
   return str.replace(/[-_/](.)/g, (_, c) => c.toUpperCase()).replace(/^(.)/, (_, c) => c.toUpperCase());
 }
@@ -3884,10 +4416,10 @@ function toKebabCase(str) {
   return str.replace(/([A-Z])/g, "-$1").toLowerCase().replace(/^-/, "").replace(/[_/]/g, "-");
 }
 function getBaseName(name) {
-  return path8.basename(name.replace(/\\/g, "/"));
+  return path14.basename(name.replace(/\\/g, "/"));
 }
 function resolveCwd(...segments) {
-  return path8.resolve(process.cwd(), ...segments);
+  return path14.resolve(process.cwd(), ...segments);
 }
 
 // src/commands/add.ts
@@ -3907,87 +4439,119 @@ function parseAddArgs(argv) {
       positional.push(arg);
     }
   }
-  const type = positional[0];
-  const name = positional[1];
-  return { type, name, dir, dry, force };
+  return {
+    type: positional[0],
+    name: positional[1],
+    dir,
+    dry,
+    force
+  };
 }
 function printAddUsage() {
   console.log();
-  console.log(chalk4.bold("  create-atom-stack add") + chalk4.dim(" <type> <name> [options]"));
+  console.log(chalk7.bold("  create-atom-stack add") + chalk7.dim(" <type> <name> [options]"));
   console.log();
-  console.log(chalk4.dim("  Types:"));
-  console.log("    " + chalk4.cyan("component") + chalk4.dim("    React component with types, test, and styles"));
-  console.log("    " + chalk4.cyan("page") + chalk4.dim("        Next.js App Router page with loading state"));
-  console.log("    " + chalk4.cyan("feature") + chalk4.dim("     Feature module with full directory structure"));
-  console.log("    " + chalk4.cyan("store") + chalk4.dim("       Zustand store with types"));
-  console.log("    " + chalk4.cyan("api") + chalk4.dim("         API module with types and Zod schemas"));
+  console.log(chalk7.dim("  Atomic Design generators:"));
+  console.log("    " + chalk7.cyan("atom") + chalk7.dim("        Smallest reusable unit        src/components/atoms/"));
+  console.log("    " + chalk7.cyan("molecule") + chalk7.dim("    Composed of atoms              src/components/molecules/"));
+  console.log("    " + chalk7.cyan("organism") + chalk7.dim("    Self-contained section         src/components/organisms/"));
+  console.log("    " + chalk7.cyan("template") + chalk7.dim("    Page layout / structural       src/components/templates/"));
+  console.log("    " + chalk7.cyan("component") + chalk7.dim("   Generic \u2014 not Atomic Design     src/components/"));
   console.log();
-  console.log(chalk4.dim("  Options:"));
-  console.log("    " + chalk4.dim("--dry         Show what would be generated without writing files"));
-  console.log("    " + chalk4.dim("--force       Overwrite existing files without prompting"));
-  console.log("    " + chalk4.dim("--dir=<path>  Override the default output directory"));
+  console.log(chalk7.dim("  App generators:"));
+  console.log("    " + chalk7.cyan("page") + chalk7.dim("        Next.js App Router page          src/app/"));
+  console.log("    " + chalk7.cyan("feature") + chalk7.dim("     Feature-first module dir        src/features/"));
+  console.log("    " + chalk7.cyan("store") + chalk7.dim("       State store (auto-detects SM)   src/store/"));
+  console.log("    " + chalk7.cyan("api") + chalk7.dim("         API module + types + schemas   src/api/"));
   console.log();
-  console.log(chalk4.dim("  Examples:"));
-  console.log("    npx create-atom-stack add component Button");
+  console.log(chalk7.dim("  Options:"));
+  console.log("    " + chalk7.dim("--dry         Show what would be generated without writing files"));
+  console.log("    " + chalk7.dim("--force       Overwrite existing files without prompting"));
+  console.log("    " + chalk7.dim("--dir=<path>  Override the default output directory"));
+  console.log();
+  console.log(chalk7.dim("  Examples:"));
+  console.log("    npx create-atom-stack add atom Button");
+  console.log("    npx create-atom-stack add molecule SearchBar");
+  console.log("    npx create-atom-stack add organism Navbar");
+  console.log("    npx create-atom-stack add template DashboardLayout");
   console.log("    npx create-atom-stack add page dashboard/reports");
-  console.log("    npx create-atom-stack add feature billing");
-  console.log("    npx create-atom-stack add store auth");
+  console.log('    npx create-atom-stack add page "dashboard/[id]"     ' + chalk7.dim("\u2190 quote dynamic routes"));
+  console.log("    npx create-atom-stack add store auth                " + chalk7.dim("\u2190 auto-detects Zustand/RTK/Jotai/MobX"));
   console.log("    npx create-atom-stack add api users");
-  console.log("    npx create-atom-stack add component Button " + chalk4.dim("--dry"));
-  console.log("    npx create-atom-stack add page admin/users " + chalk4.dim("--dir src/modules"));
-  console.log("    npx create-atom-stack add api payments " + chalk4.dim("--force"));
+  console.log("    npx create-atom-stack add atom Button " + chalk7.dim("--dry"));
+  console.log("    npx create-atom-stack add page admin/users " + chalk7.dim("--dir src/modules"));
+  console.log("    npx create-atom-stack add api payments " + chalk7.dim("--force"));
+  console.log();
+  console.log(chalk7.dim("  Shell note:"));
+  console.log("    Dynamic route segments contain brackets: " + chalk7.yellow("[id]"));
+  console.log("    zsh/bash treat brackets as glob chars \u2014 always quote them:");
+  console.log("      " + chalk7.cyan('npx create-atom-stack add page "dashboard/[id]"'));
   console.log();
 }
 async function promptType() {
-  const result = await p2.select({
+  const result = await p3.select({
     message: "What do you want to generate?",
     options: [
-      { value: "component", label: "component", hint: "React component + test + styles" },
+      { value: "atom", label: "atom", hint: "Atomic Design \u2014 smallest unit" },
+      { value: "molecule", label: "molecule", hint: "Atomic Design \u2014 composed of atoms" },
+      { value: "organism", label: "organism", hint: "Atomic Design \u2014 self-contained section" },
+      { value: "template", label: "template", hint: "Atomic Design \u2014 page layout" },
+      { value: "component", label: "component", hint: "Generic component" },
       { value: "page", label: "page", hint: "Next.js App Router page" },
       { value: "feature", label: "feature", hint: "Feature module directory" },
-      { value: "store", label: "store", hint: "Zustand store + types" },
+      { value: "store", label: "store", hint: "State store (auto-detects SM)" },
       { value: "api", label: "api", hint: "API module + types + schemas" }
     ]
   });
-  if (p2.isCancel(result)) {
-    p2.cancel("Cancelled.");
+  if (p3.isCancel(result)) {
+    p3.cancel("Cancelled.");
     process.exit(0);
   }
   return result;
 }
 async function promptName(type) {
-  const hints = {
+  const placeholders = {
     component: "Button",
+    atom: "Button",
+    molecule: "SearchBar",
+    organism: "Navbar",
+    template: "DashboardLayout",
     page: "dashboard/reports",
     feature: "billing",
     store: "auth",
     api: "users"
   };
-  const result = await p2.text({
+  const result = await p3.text({
     message: `Name for the ${type}?`,
-    placeholder: hints[type],
+    placeholder: placeholders[type],
     validate: (v) => v.trim() ? void 0 : "Name is required."
   });
-  if (p2.isCancel(result)) {
-    p2.cancel("Cancelled.");
+  if (p3.isCancel(result)) {
+    p3.cancel("Cancelled.");
     process.exit(0);
   }
   return result;
 }
-function importHint(type, pascal, outDir) {
-  const rel = path9.relative(resolveCwd("src"), outDir).replace(/\\/g, "/");
+function importHint(type, pascal, camel, outDir) {
+  const rel = path15.relative(resolveCwd("src"), outDir).replace(/\\/g, "/");
   const alias = `@/${rel}`;
   switch (type) {
     case "component":
+    case "atom":
+    case "molecule":
+    case "organism":
+    case "template":
       return `import ${pascal} from '${alias}';`;
     case "page":
-      return `// File-system route \u2014 no import needed.`;
+      return `// File-system route \u2014 no manual import needed.`;
     case "feature":
       return `import { } from '${alias}';`;
     case "store":
-      return `import { use${pascal}Store } from '${alias}';`;
+      return `import { use${pascal}Store } from '${alias}';  // Zustand
+    import { ${camel}Actions } from '${alias}';           // RTK
+    import { ${camel}Atom } from '${alias}';              // Jotai`;
     case "api":
-      return `import { ${pascal.toLowerCase()}Api } from '${alias}';`;
+      return `import { ${camel}Api } from '${alias}';`;
   }
 }
 async function runAddCommand(argv) {
@@ -4003,7 +4567,7 @@ async function runAddCommand(argv) {
       process.exit(1);
     }
     console.log();
-    p2.intro(chalk4.bold.cyan("create-atom-stack") + chalk4.dim("  add generator"));
+    p3.intro(chalk7.bold.cyan("create-atom-stack") + chalk7.dim("  add generator"));
     type = await promptType();
   }
   if (!name?.trim()) {
@@ -4013,7 +4577,7 @@ async function runAddCommand(argv) {
     }
     if (!type) {
       console.log();
-      p2.intro(chalk4.bold.cyan("create-atom-stack") + chalk4.dim("  add generator"));
+      p3.intro(chalk7.bold.cyan("create-atom-stack") + chalk7.dim("  add generator"));
     }
     name = await promptName(type);
   }
@@ -4023,31 +4587,31 @@ async function runAddCommand(argv) {
   const camelName = toCamelCase(baseName);
   const kebabName = toKebabCase(baseName);
   const baseDir = resolveCwd(dir ?? generator.defaultBaseDir);
-  const outDir = path9.join(baseDir, name);
+  const outDir = path15.join(baseDir, name);
   const ctx = { rawName: name, pascalName, camelName, kebabName, outDir, dry, force };
-  const files = generator.generate(ctx);
-  const typeLabel = chalk4.bold.cyan(type);
-  const nameLabel = chalk4.bold(name);
+  const typeLabel = chalk7.bold.cyan(type);
+  const nameLabel = chalk7.bold(name);
   if (dry) {
     log.section(`Dry run \u2014 ${typeLabel} ${nameLabel}`);
   } else {
     log.section(`Generating ${typeLabel} ${nameLabel}`);
   }
+  const files = await Promise.resolve(generator.generate(ctx));
   const { created, skipped, overwritten } = await writeGeneratedFiles(files, { dry, force });
   console.log();
   if (dry) {
-    log.warn(`No files written (dry run). Remove ${chalk4.bold("--dry")} to generate for real.`);
+    log.warn(`No files written (dry run). Remove ${chalk7.bold("--dry")} to generate for real.`);
     console.log();
     return;
   }
   const parts = [];
-  if (created) parts.push(chalk4.green(`${created} created`));
-  if (overwritten) parts.push(chalk4.blue(`${overwritten} overwritten`));
-  if (skipped) parts.push(chalk4.yellow(`${skipped} skipped`));
+  if (created) parts.push(chalk7.green(`${created} created`));
+  if (overwritten) parts.push(chalk7.blue(`${overwritten} overwritten`));
+  if (skipped) parts.push(chalk7.yellow(`${skipped} skipped`));
   log.success(`Done! ${parts.join(", ")}`);
   console.log();
-  console.log("  " + chalk4.dim("Import:"));
-  console.log("    " + chalk4.cyan(importHint(type, pascalName, outDir)));
+  console.log("  " + chalk7.dim("Import:"));
+  console.log("    " + chalk7.cyan(importHint(type, pascalName, camelName, outDir)));
   console.log();
 }
 
@@ -4060,29 +4624,29 @@ function validateName(v) {
 }
 function printUsage() {
   console.log();
-  console.log(chalk5.bold("  create-atom-stack") + chalk5.dim(" <command> [options]"));
+  console.log(chalk8.bold("  create-atom-stack") + chalk8.dim(" <command> [options]"));
   console.log();
-  console.log(chalk5.dim("  Commands:"));
-  console.log("    " + chalk5.cyan("[project-name]") + chalk5.dim("       Scaffold a new Next.js project (default)"));
-  console.log("    " + chalk5.cyan("add <type> <name>") + chalk5.dim("    Generate a component, page, feature, store, or api"));
+  console.log(chalk8.dim("  Commands:"));
+  console.log("    " + chalk8.cyan("[project-name]") + chalk8.dim("       Scaffold a new Next.js project (default)"));
+  console.log("    " + chalk8.cyan("add <type> <name>") + chalk8.dim("    Generate a component, page, feature, store, or api"));
   console.log();
-  console.log(chalk5.dim("  Scaffold options:"));
-  console.log(chalk5.dim("    --pm=<npm|pnpm|yarn|bun>                     Package manager (default: npm)"));
-  console.log(chalk5.dim("    --state=<zustand|jotai|react-query|none>     State management (default: zustand)"));
-  console.log(chalk5.dim("    --e2e=<playwright|cypress|none>              E2E framework (default: none)"));
-  console.log(chalk5.dim("    --rxjs                                       Add RxJS (Observables + useObservable hook)"));
-  console.log(chalk5.dim("    --xstate                                     Add XState (state machines + useMachine)"));
-  console.log(chalk5.dim("    --skip-install                               Skip dependency install"));
-  console.log(chalk5.dim("    --no-git                                     Skip git init"));
-  console.log(chalk5.dim("    --help                                       Show this help"));
+  console.log(chalk8.dim("  Scaffold options:"));
+  console.log(chalk8.dim("    --pm=<npm|pnpm|yarn|bun>                     Package manager (default: npm)"));
+  console.log(chalk8.dim("    --state=<zustand|jotai|react-query|none>     State management (default: zustand)"));
+  console.log(chalk8.dim("    --e2e=<playwright|cypress|none>              E2E framework (default: none)"));
+  console.log(chalk8.dim("    --rxjs                                       Add RxJS (Observables + useObservable hook)"));
+  console.log(chalk8.dim("    --xstate                                     Add XState (state machines + useMachine)"));
+  console.log(chalk8.dim("    --skip-install                               Skip dependency install"));
+  console.log(chalk8.dim("    --no-git                                     Skip git init"));
+  console.log(chalk8.dim("    --help                                       Show this help"));
   console.log();
-  console.log(chalk5.dim("  Examples:"));
-  console.log("    npx create-atom-stack                       " + chalk5.dim("(interactive)"));
+  console.log(chalk8.dim("  Examples:"));
+  console.log("    npx create-atom-stack                       " + chalk8.dim("(interactive)"));
   console.log("    npx create-atom-stack my-app");
   console.log("    npx create-atom-stack my-app --pm=pnpm --state=react-query");
   console.log("    npx create-atom-stack add component Button");
   console.log("    npx create-atom-stack add page dashboard/reports");
-  console.log("    npx create-atom-stack add --help            " + chalk5.dim("(generator help)"));
+  console.log("    npx create-atom-stack add --help            " + chalk8.dim("(generator help)"));
   console.log();
 }
 async function main() {
@@ -4105,14 +4669,14 @@ async function main() {
   const hasDirectName = rawName && !rawName.startsWith("-");
   const isTTY = Boolean(process.stdin.isTTY);
   if (!hasDirectName && !isTTY) {
-    console.error(chalk5.red("\n  Error: Project name is required in non-interactive mode.\n"));
+    console.error(chalk8.red("\n  Error: Project name is required in non-interactive mode.\n"));
     printUsage();
     process.exit(1);
   }
   if (hasDirectName) {
     const nameError = validateName(rawName);
     if (nameError) {
-      console.error(chalk5.red(`
+      console.error(chalk8.red(`
   Error: ${nameError}
 `));
       process.exit(1);
@@ -4130,15 +4694,15 @@ async function main() {
     noGit = flags.includes("--no-git");
   } else {
     console.log();
-    p3.intro(chalk5.bold.cyan("create-atom-stack") + chalk5.dim("  Atomic Next.js scaffold"));
-    const answers = await p3.group(
+    p4.intro(chalk8.bold.cyan("create-atom-stack") + chalk8.dim("  Atomic Next.js scaffold"));
+    const answers = await p4.group(
       {
-        projectName: () => p3.text({
+        projectName: () => p4.text({
           message: "Project name?",
           placeholder: "my-app",
           validate: validateName
         }),
-        pm: () => p3.select({
+        pm: () => p4.select({
           message: "Package manager?",
           options: [
             { value: "npm", label: "npm" },
@@ -4147,7 +4711,7 @@ async function main() {
             { value: "bun", label: "bun" }
           ]
         }),
-        stateManagement: () => p3.select({
+        stateManagement: () => p4.select({
           message: "State management?",
           options: [
             { value: "zustand", label: "Zustand", hint: "recommended" },
@@ -4156,7 +4720,7 @@ async function main() {
             { value: "none", label: "none" }
           ]
         }),
-        e2e: () => p3.select({
+        e2e: () => p4.select({
           message: "E2E testing?",
           options: [
             { value: "none", label: "none" },
@@ -4164,11 +4728,11 @@ async function main() {
             { value: "cypress", label: "Cypress" }
           ]
         }),
-        conventionalCommits: () => p3.confirm({
+        conventionalCommits: () => p4.confirm({
           message: "Conventional commits? (husky + commitlint)",
           initialValue: true
         }),
-        advancedAddons: () => p3.multiselect({
+        advancedAddons: () => p4.multiselect({
           message: "Advanced add-ons? (optional \u2014 space to select)",
           options: [
             { value: "rxjs", label: "RxJS", hint: "Observable streams + useObservable hook" },
@@ -4176,18 +4740,18 @@ async function main() {
           ],
           required: false
         }),
-        skipInstall: () => p3.confirm({
+        skipInstall: () => p4.confirm({
           message: "Skip install?",
           initialValue: false
         }),
-        noGit: () => p3.confirm({
+        noGit: () => p4.confirm({
           message: "Skip git init?",
           initialValue: false
         })
       },
       {
         onCancel: () => {
-          p3.cancel("Cancelled.");
+          p4.cancel("Cancelled.");
           process.exit(0);
         }
       }
@@ -4200,12 +4764,12 @@ async function main() {
     advancedAddons = answers.advancedAddons;
     skipInstall = answers.skipInstall;
     noGit = answers.noGit;
-    p3.outro(chalk5.dim("Scaffolding\u2026"));
+    p4.outro(chalk8.dim("Scaffolding\u2026"));
     console.log();
   }
   const spinner = ora({ prefixText: "  " }).start("Scaffolding project...");
   createProject(projectName, { skipInstall, noGit, pm, stateManagement, e2e, conventionalCommits, advancedAddons, spinner }).catch((err) => {
-    spinner.fail(chalk5.red("Failed: " + err.message));
+    spinner.fail(chalk8.red("Failed: " + err.message));
     console.log();
     process.exit(1);
   });
