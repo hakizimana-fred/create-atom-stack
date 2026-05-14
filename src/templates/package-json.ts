@@ -14,9 +14,13 @@ export interface ScaffoldOptions {
 export function packageJsonTemplate(name: string, opts: ScaffoldOptions): string {
   const expectedPackageManager = opts.pm;
   const packageManagerCheck =
-    "node -e \"const ua=process.env.npm_config_user_agent||''; const pm='" +
+    "node -e \"const ua=process.env.npm_config_user_agent||'';" +
+    " const exec=(process.env.npm_execpath||'').toLowerCase();" +
+    " const pm='" +
     expectedPackageManager +
-    "/'; if (!ua.startsWith(pm)) { console.error('Use " +
+    "';" +
+    " const ok=ua.startsWith(pm+'/') || exec.includes('/'+pm) || exec.includes('\\\\\\\\'+pm);" +
+    " if (!ok) { console.error('Use " +
     expectedPackageManager +
     " to install dependencies.'); process.exit(1); }\"";
 

@@ -62,6 +62,12 @@ const INSTALL_PHASES = [
   'Running lifecycle scripts',
 ];
 
+function getPackageManagerEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env.npm_config_user_agent;
+  return env;
+}
+
 /* ─── Streaming install ──────────────────────────────────────────────────── */
 
 function runInstall(pm: PackageManager, cwd: string, spinner: Ora): Promise<void> {
@@ -83,6 +89,7 @@ function runInstall(pm: PackageManager, cwd: string, spinner: Ora): Promise<void
     // so pnpm/yarn/bun installed via corepack or custom locations are found.
     const child = spawn(`${bin} ${args.join(' ')}`, [], {
       cwd,
+      env: getPackageManagerEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,
     });

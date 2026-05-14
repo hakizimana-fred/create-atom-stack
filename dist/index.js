@@ -14,7 +14,7 @@ import chalk from "chalk";
 // src/templates/package-json.ts
 function packageJsonTemplate(name, opts) {
   const expectedPackageManager = opts.pm;
-  const packageManagerCheck = `node -e "const ua=process.env.npm_config_user_agent||''; const pm='` + expectedPackageManager + "/'; if (!ua.startsWith(pm)) { console.error('Use " + expectedPackageManager + ` to install dependencies.'); process.exit(1); }"`;
+  const packageManagerCheck = `node -e "const ua=process.env.npm_config_user_agent||''; const exec=(process.env.npm_execpath||'').toLowerCase(); const pm='` + expectedPackageManager + "'; const ok=ua.startsWith(pm+'/') || exec.includes('/'+pm) || exec.includes('\\\\\\\\'+pm); if (!ok) { console.error('Use " + expectedPackageManager + ` to install dependencies.'); process.exit(1); }"`;
   const stateDep = opts.stateManagement === "zustand" ? { zustand: "^5.0.11" } : opts.stateManagement === "jotai" ? { jotai: "^2.11.3" } : opts.stateManagement === "react-query" ? { "@tanstack/react-query": "^5.80.2" } : {};
   const advancedDeps = {
     ...opts.advancedAddons.includes("rxjs") ? { rxjs: "^7.8.2" } : {},
@@ -266,6 +266,18 @@ fetch-retry-mintimeout=20000
 fetch-retry-maxtimeout=120000
 network-concurrency=4
 `;
+function pnpmWorkspaceConfig(e2e) {
+  const allowBuilds = [
+    "sharp",
+    "unrs-resolver",
+    ...e2e === "cypress" ? ["cypress"] : []
+  ];
+  return [
+    "allowBuilds:",
+    ...allowBuilds.map((pkg) => `  ${pkg}: true`),
+    ""
+  ].join("\n");
+}
 var envExample = `# API base URL (server-side \u2014 used by Next.js server components and API routes)
 API_URL=http://localhost:3000
 
@@ -3271,6 +3283,9 @@ function getFileMap(projectName, opts) {
     ".gitignore": gitIgnore,
     ".nvmrc": nvmrc,
     ".npmrc": npmrc,
+    ...opts.pm === "pnpm" ? {
+      "pnpm-workspace.yaml": pnpmWorkspaceConfig(opts.e2e)
+    } : {},
     ".env.example": envExample,
     /* yarn berry requires a lockfile at the project root to stop upward traversal,
        and nodeLinker: node-modules for Next.js / jest compatibility */
@@ -3410,6 +3425,11 @@ var INSTALL_PHASES = [
   "Building package graph",
   "Running lifecycle scripts"
 ];
+function getPackageManagerEnv() {
+  const env = { ...process.env };
+  delete env.npm_config_user_agent;
+  return env;
+}
 function runInstall(pm, cwd, spinner) {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
@@ -3423,6 +3443,7 @@ function runInstall(pm, cwd, spinner) {
     const [bin, ...args] = PM_INSTALL[pm];
     const child = spawn(`${bin} ${args.join(" ")}`, [], {
       cwd,
+      env: getPackageManagerEnv(),
       stdio: ["ignore", "pipe", "pipe"],
       shell: true
     });
@@ -4308,11 +4329,17 @@ var PM_ADD = {
   yarn: "add",
   bun: "add"
 };
+function getPackageManagerEnv2() {
+  const env = { ...process.env };
+  delete env.npm_config_user_agent;
+  return env;
+}
 function installPackages(packages, pm) {
   const cmd = `${pm} ${PM_ADD[pm] ?? "install"} ${packages.join(" ")}`;
   return new Promise((resolve, reject) => {
     const child = spawn2(cmd, [], {
       cwd: process.cwd(),
+      env: getPackageManagerEnv2(),
       stdio: "pipe",
       shell: true
     });

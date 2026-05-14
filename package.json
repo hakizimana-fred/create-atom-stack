@@ -1,6 +1,6 @@
 {
   "name": "create-atom-stack",
-  "version": "1.0.5",
+  "version": "1.0.8",
   "description": "Scaffold a production-ready Next.js App Router project with atomic design, Zustand, Tailwind CSS v4, and Conventional Commits.",
   "type": "module",
   "bin": {

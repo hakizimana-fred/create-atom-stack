@@ -124,6 +124,20 @@ fetch-retry-maxtimeout=120000
 network-concurrency=4
 `;
 
+export function pnpmWorkspaceConfig(e2e: 'playwright' | 'cypress' | 'none'): string {
+  const allowBuilds = [
+    'sharp',
+    'unrs-resolver',
+    ...(e2e === 'cypress' ? ['cypress'] : []),
+  ];
+
+  return [
+    'allowBuilds:',
+    ...allowBuilds.map((pkg) => `  ${pkg}: true`),
+    '',
+  ].join('\n');
+}
+
 export const envExample = `# API base URL (server-side — used by Next.js server components and API routes)
 API_URL=http://localhost:3000
 

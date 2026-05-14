@@ -23,11 +23,18 @@ const PM_ADD: Record<string, string> = {
   bun:  'add',
 };
 
+function getPackageManagerEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env.npm_config_user_agent;
+  return env;
+}
+
 function installPackages(packages: string[], pm: string): Promise<void> {
   const cmd = `${pm} ${PM_ADD[pm] ?? 'install'} ${packages.join(' ')}`;
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, [], {
       cwd: process.cwd(),
+      env: getPackageManagerEnv(),
       stdio: 'pipe',
       shell: true,
     });

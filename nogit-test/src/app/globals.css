@@ -1,0 +1,233 @@
+@import 'tailwindcss';
+
+@config "../../tailwind.config.ts";
+
+@layer base {
+  button,
+  a,
+  [role='button'] {
+    cursor: pointer;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   DESIGN TOKENS  — dark theme default
+──────────────────────────────────────────────────────────────────────────────*/
+
+:root {
+  --page-bg: #09090b;
+
+  /* ── Surfaces ────────────────────────────────────────────────────────────── */
+  --surface-base:    #0f0f13;
+  --surface-raised:  #18181b;
+  --surface-overlay: #27272a;
+  --surface-sunken:  #05050a;
+  --surface-soft:    #141418;
+
+  /* ── Glass surfaces ──────────────────────────────────────────────────────── */
+  --glass-surface:       rgba(24, 24, 27, 0.72);
+  --glass-raised:        rgba(39, 39, 42, 0.90);
+  --glass-overlay:       rgba(50, 50, 54, 0.98);
+  --glass-subtle:        rgba(24, 24, 27, 0.50);
+  --glass-border:        rgba(255, 255, 255, 0.07);
+  --glass-border-strong: rgba(255, 255, 255, 0.12);
+  --glass-glow:          rgba(255, 255, 255, 0.05);
+
+  /* ── Text ────────────────────────────────────────────────────────────────── */
+  --text-primary:   #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-tertiary:  #52525b;
+  --text-disabled:  #3f3f46;
+  --text-inverse:   #09090b;
+  --text-link:      #818cf8;
+
+  /* ── Borders ─────────────────────────────────────────────────────────────── */
+  --border-default: #27272a;
+  --border-strong:  #3f3f46;
+  --border-focus:   #6366f1;
+  --border-light:   #18181b;
+  --border-divider: #27272a;
+
+  /* ── Brand (indigo) ──────────────────────────────────────────────────────── */
+  --brand:        #6366f1;
+  --brand-hover:  #4f46e5;
+  --brand-subtle: rgba(99, 102, 241, 0.12);
+  --brand-muted:  rgba(99, 102, 241, 0.20);
+  --brand-glow:   rgba(99, 102, 241, 0.35);
+
+  /* ── Semantic status ─────────────────────────────────────────────────────── */
+  --success:        #22c55e;
+  --success-subtle: rgba(34, 197, 94, 0.12);
+  --success-text:   #4ade80;
+
+  --error:          #ef4444;
+  --error-subtle:   rgba(239, 68, 68, 0.12);
+  --error-text:     #f87171;
+
+  --warning:        #f59e0b;
+  --warning-subtle: rgba(245, 158, 11, 0.12);
+  --warning-text:   #fbbf24;
+
+  /* ── Status chips ────────────────────────────────────────────────────────── */
+  --status-success:       #22c55e;
+  --status-success-bg:    rgba(34, 197, 94, 0.10);
+  --status-success-text:  #4ade80;
+
+  --status-error:         #ef4444;
+  --status-error-bg:      rgba(239, 68, 68, 0.10);
+  --status-error-text:    #f87171;
+
+  --status-info:          #6366f1;
+  --status-info-bg:       rgba(99, 102, 241, 0.10);
+  --status-info-text:     #818cf8;
+
+  --status-warning:       #f59e0b;
+  --status-warning-bg:    rgba(245, 158, 11, 0.10);
+  --status-warning-text:  #fbbf24;
+}
+
+/* Light theme override */
+[data-theme='light'] {
+  --page-bg: #fafafa;
+
+  --surface-base:    #ffffff;
+  --surface-raised:  #f4f4f5;
+  --surface-overlay: #e4e4e7;
+  --surface-sunken:  #f1f1f3;
+  --surface-soft:    #f9f9fb;
+
+  --glass-surface:       rgba(255, 255, 255, 0.70);
+  --glass-raised:        rgba(255, 255, 255, 0.95);
+  --glass-overlay:       rgba(255, 255, 255, 0.99);
+  --glass-subtle:        rgba(255, 255, 255, 0.50);
+  --glass-border:        rgba(0, 0, 0, 0.06);
+  --glass-border-strong: rgba(0, 0, 0, 0.12);
+  --glass-glow:          rgba(255, 255, 255, 0.80);
+
+  --text-primary:   #09090b;
+  --text-secondary: #52525b;
+  --text-tertiary:  #a1a1aa;
+  --text-disabled:  #d4d4d8;
+  --text-inverse:   #fafafa;
+  --text-link:      #4f46e5;
+
+  --border-default: #e4e4e7;
+  --border-strong:  #d4d4d8;
+  --border-focus:   #6366f1;
+  --border-light:   #f4f4f5;
+  --border-divider: #e4e4e7;
+
+  --brand:        #6366f1;
+  --brand-hover:  #4f46e5;
+  --brand-subtle: rgba(99, 102, 241, 0.08);
+  --brand-muted:  rgba(99, 102, 241, 0.15);
+  --brand-glow:   rgba(99, 102, 241, 0.25);
+
+  --success:        #16a34a;
+  --success-subtle: rgba(22, 163, 74, 0.08);
+  --success-text:   #15803d;
+
+  --error:          #dc2626;
+  --error-subtle:   rgba(220, 38, 38, 0.08);
+  --error-text:     #b91c1c;
+
+  --warning:        #d97706;
+  --warning-subtle: rgba(217, 119, 6, 0.08);
+  --warning-text:   #b45309;
+
+  --status-success:       #16a34a;
+  --status-success-bg:    #dcfce7;
+  --status-success-text:  #15803d;
+
+  --status-error:         #dc2626;
+  --status-error-bg:      #fee2e2;
+  --status-error-text:    #b91c1c;
+
+  --status-info:          #4f46e5;
+  --status-info-bg:       #ede9fe;
+  --status-info-text:     #4338ca;
+
+  --status-warning:       #d97706;
+  --status-warning-bg:    #fef3c7;
+  --status-warning-text:  #92400e;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   BASE STYLES
+──────────────────────────────────────────────────────────────────────────────*/
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+}
+
+:focus-visible {
+  outline: none;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   GLASS COMPOUND UTILITIES
+──────────────────────────────────────────────────────────────────────────────*/
+
+@layer utilities {
+  .glass-panel {
+    background: var(--glass-surface);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    border: 1px solid var(--glass-border);
+  }
+
+  .glass-panel-raised {
+    background: var(--glass-raised);
+    backdrop-filter: blur(20px) saturate(200%);
+    -webkit-backdrop-filter: blur(20px) saturate(200%);
+    border: 1px solid var(--glass-border-strong);
+  }
+
+  .glass-panel-overlay {
+    background: var(--glass-overlay);
+    backdrop-filter: blur(28px) saturate(220%);
+    -webkit-backdrop-filter: blur(28px) saturate(220%);
+    border: 1px solid var(--glass-border-strong);
+  }
+
+  .glass-topbar {
+    background: var(--glass-surface);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--glass-border);
+  }
+
+  .bg-grid {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  .bg-dots {
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.06) 1px, transparent 0);
+    background-size: 32px 32px;
+  }
+
+  .gradient-text {
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .glow-brand {
+    box-shadow: 0 0 24px var(--brand-glow), 0 0 48px var(--brand-glow);
+  }
+}

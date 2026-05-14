@@ -14,6 +14,7 @@ import {
   gitIgnore,
   nvmrc,
   npmrc,
+  pnpmWorkspaceConfig,
   envExample,
   nextEnvDts,
   jestConfig,
@@ -97,6 +98,9 @@ export function getFileMap(projectName: string, opts: ScaffoldOptions): FileMap 
     '.gitignore':              gitIgnore,
     '.nvmrc':                  nvmrc,
     '.npmrc':                  npmrc,
+    ...(opts.pm === 'pnpm' ? {
+      'pnpm-workspace.yaml':   pnpmWorkspaceConfig(opts.e2e),
+    } : {}),
     '.env.example':            envExample,
     /* yarn berry requires a lockfile at the project root to stop upward traversal,
        and nodeLinker: node-modules for Next.js / jest compatibility */
